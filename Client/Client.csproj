@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <NullableContextOptions>enable</NullableContextOptions>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <UseWindowsForms>true</UseWindowsForms>
+        <UseWPF>true</UseWPF>
 
         <OutputType>Exe</OutputType>
         <OutputPath>$(SolutionDir)bin</OutputPath>
@@ -31,5 +31,8 @@
     </PropertyGroup>
     <ItemGroup>
       <PackageReference Include="Unknown6656.Core" Version="1.0.20.2" />
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\Server\Server.csproj" />
     </ItemGroup>
 </Project>
