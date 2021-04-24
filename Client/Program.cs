@@ -3,7 +3,9 @@ using System.Text;
 using System;
 
 using SKHEIJO;
+using Unknown6656.IO;
 
+Logger.Start();
 
 try
 {
@@ -13,25 +15,27 @@ try
         s = Console.ReadLine();
     while (s is null);
 
-    using GameClient client = new(s);
+    using GameClient client = new(Guid.NewGuid(), s);
 
-    Console.WriteLine("press ENTER to exit");
-    Console.ReadLine();
+    Console.WriteLine("type 'q' to exit");
+
+    while (true)
+    {
+        string line = Console.ReadLine() ?? "";
+
+        if (line == "q")
+            break;
+        else
+            From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
+    }
 
     client.Dispose();
 }
-catch (Exception? ex)
+catch (Exception ex)
 {
-    StringBuilder sb = new();
+    ex.Err();
 
-    while (ex is Exception)
-    {
-        sb.Insert(0, $"[{ex.GetType()}] {ex.Message}:\n{ex.StackTrace}\n");
-
-        ex = ex.InnerException;
-    }
-
-    Console.WriteLine(sb);
+    await Logger.Stop();
 
     if (Debugger.IsAttached)
     {

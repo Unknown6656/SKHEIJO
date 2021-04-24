@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
-using System.Xml.Schema;
 using SKHEIJO;
+using Unknown6656.Common;
+using Unknown6656.IO;
 
 namespace Server
 {
@@ -9,24 +10,34 @@ namespace Server
     {
         public static async Task Main(string[] args)
         {
-            Game game = new(new Player[] { new(1), new(2), new(3) });
-            game.ResetAndDealCards(150, 0);
-
-            Console.WriteLine(game.CurrentPlayer.ToString());
+            Logger.Start();
 
 
+            //Game game = new(new Player[] { new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()) });
+            //game.ResetAndDealCards(150, 0);
 
-            // using GameServer server = await GameServer.CreateGameServer(14488);
-            using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488);
+
+
+            // using GameServer server = await GameServer.CreateGameServer(14488, "lol kay");
+            using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488, "lol kay");
 
             Console.WriteLine(server.ConnectionString);
             Console.WriteLine("\npress ESC to exit.");
 
+            server.OnIncomingData += (p, m, r) => From.String(From.Bytes(m).ToHexString());
             server.Start();
 
             while (server.IsRunning)
-                if (Console.KeyAvailable && Console.ReadKey(true).Key is ConsoleKey.Escape)
-                    server.Stop();
+            {
+                do
+                    while (!Console.KeyAvailable)
+                        await Task.Delay(20);
+                while (Console.ReadKey(true).Key is ConsoleKey.Escape);
+
+                server.Stop();
+            }
+
+            await Logger.Stop();
         }
     }
 }
