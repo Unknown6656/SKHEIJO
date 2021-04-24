@@ -1,19 +1,21 @@
 ﻿using System;
-using System.Buffers;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Unknown6656.Common;
 using Unknown6656.IO;
 
 namespace SKHEIJO
 {
-    public record Player(int UID)
+    public record Player(Guid UUID)
     {
         public TcpClient? Client { get; init; }
+
+
+        public override string ToString() => $"{UUID} ({(Client?.Client?.RemoteEndPoint is IPEndPoint ep ? ep.ToString() : "not connected")})";
     }
 
     public sealed class ConnectionString
@@ -82,29 +84,73 @@ namespace SKHEIJO
         public static implicit operator ConnectionString(string s) => FromString(s);
     }
 
+    public readonly struct RawCommunicationPacket
+    {
+        public readonly Guid ConversationIdentifier;
+        public readonly byte[] MessageBytes;
+
+
+        public RawCommunicationPacket(byte[] bytes)
+            : this(Guid.NewGuid(), bytes)
+        {
+        }
+
+        public RawCommunicationPacket(Guid conversation, byte[] bytes)
+        {
+            ConversationIdentifier = conversation;
+            MessageBytes = bytes;
+        }
+
+        public override string ToString() => $"{ConversationIdentifier}: {MessageBytes.Length} Bytes";
+
+        public void WriteTo(BinaryWriter writer)
+        {
+            bool compressed = MessageBytes.Length > 128;
+
+            writer.WriteNative(ConversationIdentifier);
+            writer.WriteNative(compressed);
+            writer.WriteCollection(compressed ? MessageBytes.Compress(CompressionFunction.GZip) : MessageBytes);
+        }
+
+        public static RawCommunicationPacket ReadFrom(BinaryReader reader)
+        {
+            Guid conversation_id = reader.ReadNative<Guid>();
+            bool compressed = reader.ReadBoolean();
+            byte[] bytes = reader.ReadCollection<byte>();
+
+            if (compressed)
+                bytes = bytes.Uncompress(CompressionFunction.GZip);
+
+            return new(conversation_id, bytes);
+        }
+    }
+
+    public delegate byte[]? IncomingDataDelegate(Player player, byte[] message, bool reply_requested);
+
     public sealed class GameServer
         : IDisposable
     {
         public ConnectionString ConnectionString { get; }
         public TcpListener Listener { get; }
         public bool IsRunning => _running != 0;
+        public string ServerName { get; }
 
-        private readonly ConcurrentHashSet<Player> _players;
+        private readonly ConcurrentDictionary<Player, ConcurrentQueue<RawCommunicationPacket>> _players;
+        private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _incoming;
         private volatile int _running;
-        private volatile int _playerid;
 
 
-        private GameServer(ConnectionString connection_string)
+        public event IncomingDataDelegate? OnIncomingData;
+
+
+        private GameServer(ConnectionString connection_string, string server_name)
         {
+            ServerName = server_name;
             ConnectionString = connection_string;
             Listener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Port));
             _players = new();
-            _playerid = 1;
+            _incoming = new();
         }
-
-        public static GameServer CreateLocalGameServer(string addr, ushort port) => new(new(addr, port));
-
-        public static async Task<GameServer> CreateGameServer(ushort port) => new(await ConnectionString.GetMyConnectionString(port));
 
         public void Start()
         {
@@ -116,6 +162,31 @@ namespace SKHEIJO
                 {
                     while (_running != 0)
                         await Handle(Listener).ConfigureAwait(false);
+                });
+                Task.Factory.StartNew(async delegate
+                {
+                    while (_running != 0)
+                    {
+                        bool any = false;
+
+                        while (_incoming.TryDequeue(out var item))
+                            try
+                            {
+                                any = true;
+
+                                byte[]? reply = OnIncomingData?.Invoke(item.Item1, item.Item2.MessageBytes, item.Item2.ConversationIdentifier != Guid.Empty);
+
+                                if (reply is { } && _players.TryGetValue(item.Item1, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
+                                    outgoing.Enqueue(new(item.Item2.ConversationIdentifier, reply));
+                            }
+                            catch (Exception ex)
+                            {
+                                ex.Warn();
+                            }
+
+                        if (!any)
+                            await Task.Delay(2);
+                    }
                 });
             }
         }
@@ -129,40 +200,77 @@ namespace SKHEIJO
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    ex.Err();
                 }
         }
 
         private async Task OnClientConnected(TcpClient client)
         {
-            Player player = new(Interlocked.Increment(ref _playerid))
-            {
-                Client = client
-            };
+            Player? player = null;
 
             try
             {
-                _players.Add(player);
-
-                Console.WriteLine(client.Client.RemoteEndPoint + " connected.");
+                $"Incoming connection from {client.Client.RemoteEndPoint}.".Log();
 
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new(stream))
                 using (BinaryWriter writer = new(stream))
                 {
-                    writer.Write(player.UID);
+                    Guid uuid = reader.ReadNative<Guid>();
+                    ConcurrentQueue<RawCommunicationPacket> outgoing = new();
+
+                    _players[player = new(uuid)
+                    {
+                        Client = client
+                    }] = outgoing;
+
+                    writer.Write(ServerName);
+
+                    $"{player} connected.".Ok();
 
                     ArraySegment<byte> keepalive_buffer = new byte[1];
 
                     while (_running != 0)
                         if (client.Client.Poll(0, SelectMode.SelectRead) && await client.Client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0)
-                            break; // client disconnected
+                        {
+                            $"Connection to {player} lost.".Err();
+
+                            break;
+                        }
                         else
                         {
+                            bool idle = true;
 
+                            while (outgoing.TryDequeue(out RawCommunicationPacket packet))
+                                try
+                                {
+                                    idle = false;
+                                    packet.WriteTo(writer);
 
+                                    $"{packet} sent to {player}.".Log();
+                                }
+                                catch (Exception ex)
+                                {
+                                    ex.Warn();
+                                }
 
-                            // TODO
+                            while (stream.DataAvailable)
+                                try
+                                {
+                                    RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(reader);
+
+                                    _incoming.Enqueue((player, packet));
+                                    idle = false;
+
+                                    $"{packet} received from {player}.".Log();
+                                }
+                                catch (Exception ex)
+                                {
+                                    ex.Warn();
+                                }
+
+                            if (idle)
+                                await Task.Delay(5);
                         }
                 }
 
@@ -170,9 +278,11 @@ namespace SKHEIJO
             }
             finally
             {
-                Console.WriteLine(client.Client.RemoteEndPoint + " disconnected.");
+                $"{player} disconnected.".Warn();
 
-                _players.Remove(player);
+                if (player is { })
+                    _players.TryRemove(player, out _);
+
                 client.Dispose();
             }
         }
@@ -183,8 +293,9 @@ namespace SKHEIJO
             {
                 Listener.Stop();
 
-                foreach (Player player in _players)
+                foreach ((Player player, ConcurrentQueue<RawCommunicationPacket> outgoing) in _players)
                 {
+                    outgoing.Clear();
                     player.Client?.Close();
                     player.Client?.Dispose();
                 }
@@ -195,11 +306,9 @@ namespace SKHEIJO
 
         public void Dispose() => Stop();
 
+        public static GameServer CreateLocalGameServer(string addr, ushort port, string name) => new(new(addr, port), name);
 
-        private async Task OnIncomingDataAsync(Player from, From message)
-        {
-
-        }
+        public static async Task<GameServer> CreateGameServer(ushort port, string name) => new(await ConnectionString.GetMyConnectionString(port), name);
     }
 
     public sealed class GameClient
@@ -210,26 +319,130 @@ namespace SKHEIJO
         public BinaryWriter Writer { get; }
         public BinaryReader Reader { get; }
         public Player Player { get; }
+        public string ServerName { get; }
+        public bool IsAlive { get; private set; }
+
+        private readonly ConcurrentDictionary<Guid, RawCommunicationPacket?> _open_conversations;
+        private readonly ConcurrentQueue<RawCommunicationPacket> _outgoing;
+        private readonly ConcurrentQueue<RawCommunicationPacket> _incoming;
 
 
-        public GameClient(ConnectionString connection_string)
+        public event Action<byte[]>? OnIncomingData;
+
+
+        public GameClient(Guid uuid, ConnectionString connection_string)
         {
             ConnectionString = connection_string;
+            _open_conversations = new();
+            _outgoing = new();
+            _incoming = new();
 
             TcpClient client = new();
             client.Connect(ConnectionString.EndPoint);
 
             Stream = client.GetStream();
-            Writer = new(Stream);
-            Reader = new(Stream);
-            Player = new(Reader.ReadInt32())
+            Player = new(uuid)
             {
                 Client = client
             };
+            Writer = new(Stream);
+            Reader = new(Stream);
+            IsAlive = true;
+
+            Writer.WriteNative(uuid);
+            ServerName = Reader.ReadString();
+
+            Task.Factory.StartNew(CommunicationHandler);
+            Task.Factory.StartNew(IncomingHandler);
+
+            $"Connected to '{ServerName}' via {ConnectionString.EndPoint}.".Ok();
+        }
+
+        private async Task CommunicationHandler()
+        {
+            ArraySegment<byte> keepalive_buffer = new byte[1];
+            Socket? client = Player?.Client?.Client;
+
+            while (IsAlive)
+                if (client is null || (client.Poll(0, SelectMode.SelectRead) && await client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0))
+                {
+                    "Connection to server lost.".Err();
+
+                    break;
+                }
+                else
+                {
+                    bool idle = true;
+
+                    while (_outgoing.TryDequeue(out RawCommunicationPacket packet))
+                    {
+                        idle = false;
+                        packet.WriteTo(Writer);
+
+                        if (packet.ConversationIdentifier != Guid.Empty)
+                            _open_conversations[packet.ConversationIdentifier] = null;
+
+                        $"{packet} sent to server.".Log();
+                    }
+
+                    while (Stream.DataAvailable)
+                    {
+                        RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(Reader);
+                        idle = false;
+
+                        $"{packet} received from server.".Log();
+
+                        if (packet.ConversationIdentifier != Guid.Empty && _open_conversations.ContainsKey(packet.ConversationIdentifier))
+                            _open_conversations[packet.ConversationIdentifier] = packet;
+                        else
+                            _incoming.Enqueue(packet);
+                    }
+
+                    if (idle)
+                        await Task.Yield();
+                }
+
+            if (IsAlive)
+                Dispose();
+        }
+
+        public void SendMessage(byte[] data) => _outgoing.Enqueue(new(Guid.Empty, data));
+
+        public async Task<byte[]> SendMessageAndWaitForReply(byte[] data)
+        {
+            RawCommunicationPacket packet = new(data);
+            RawCommunicationPacket? reply = null;
+
+            _outgoing.Enqueue(packet);
+
+            while (reply is null)
+                while (!_open_conversations.TryGetValue(packet.ConversationIdentifier, out reply))
+                    await Task.Yield();
+
+            return reply.Value.MessageBytes;
+        }
+
+        private async Task IncomingHandler()
+        {
+            while (IsAlive)
+            {
+                bool idle = true;
+
+                while (_incoming.TryDequeue(out RawCommunicationPacket data))
+                {
+                    idle = false;
+                    OnIncomingData?.Invoke(data.MessageBytes);
+                }
+
+                if (idle)
+                    await Task.Yield();
+            }
         }
 
         public void Dispose()
         {
+            IsAlive = false;
+
             Reader.Close();
             Writer.Close();
             Stream.Close();
