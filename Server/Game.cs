@@ -1,13 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System;
+
 using Unknown6656.Common;
-using Unknown6656.Imaging;
-using Unknown6656.Mathematics.Numerics;
 
 namespace SKHEIJO
 {
@@ -76,13 +73,14 @@ namespace SKHEIJO
         {
             column_index = Math.Max(0, Math.Min(column_index, Dimensions.columns - 1));
             (Card card, bool visible)[,] @new = new (Card, bool)[Dimensions.rows, Dimensions.columns - 1];
-            Card[] removed = Enumerable.Range(0, Dimensions.rows).ToArray(row => GameField[row, column_index]);
+            Card[] removed = Enumerable.Range(0, Dimensions.rows).ToArray(row => GameField[row, column_index].card);
 
             for (int row = 0; row < Dimensions.rows; ++row)
                 for (int col = Dimensions.columns - 2; col >= 0; --col)
                     @new[row, col] = GameField[row, col >= column_index ? col + 1 : col];
 
             --Dimensions.columns;
+            GameField = @new;
 
             return removed;
         }
@@ -106,44 +104,83 @@ namespace SKHEIJO
 
     public sealed class Game
     {
-        public readonly Stack<Card> DrawPile { get; }
-        public readonly Stack<Card> DiscardPile { get; }
-        public PlayerState[] Players;
-        public int CurrentPlayerIndex;
+        private GameState _state;
+        private int _current_index;
+        private Player? _final_round_initiator;
+
+
+        public Stack<Card> DrawPile { get; }
+        public Stack<Card> DiscardPile { get; }
+        public List<PlayerState> Players { get; }
+
+        public GameState CurrentGameState
+        {
+            get => _state;
+            set
+            {
+                if (_state != value)
+                {
+                    _state = value;
+
+                    OnGameStateChanged?.Invoke(this, value);
+                }
+            }
+        }
 
         public Card? DiscardedCard => DiscardPile.TryPeek(out Card card) ? card : null;
 
-        public PlayerState CurrentPlayer => Players[CurrentPlayerIndex];
+        public PlayerState CurrentPlayer => Players[_current_index];
+
+
+        public event Action<Game, Player>? OnPlayerAdded;
+        public event Action<Game, Player>? OnPlayerRemoved;
+        public event Action<Game, GameState>? OnGameStateChanged;
 
 
         public Game(IEnumerable<Player> players)
         {
-            Players = players.ToArray(p => new PlayerState(this, p));
-            CurrentPlayerIndex = 0;
+            Players = players.ToList(p => new PlayerState(this, p));
+            CurrentGameState = GameState.Stopped;
+            _current_index = 0;
             DrawPile = new();
             DiscardPile = new();
         }
 
-        public bool RemovePlayer(Player player)
+        public override string ToString() => $"{Players.Count} player(s), {CurrentGameState}";
+
+        public bool TryAddPlayer(Player player, out int player_index)
         {
-            for (int i = 0; i < Players.Length; ++i)
-                if (Players[i].Player.Equals(player))
-                    return RemovePlayer(i);
+            player_index = Players.Count;
+
+            if (CurrentGameState is GameState.Stopped && Players.None(p => player.Equals(p.Player)))
+            {
+                Players.Add(new(this, player));
+
+                return true;
+            }
 
             return false;
         }
 
+        public bool RemovePlayer(Player player) => RemovePlayer(Players.FindIndex(p => p.Player.Equals(player)));
+
         public bool RemovePlayer(int index)
         {
-            if (index >= 0 && index < Players.Length)
+            if (index >= 0 && index < Players.Count)
             {
-                if (CurrentPlayerIndex == index && CurrentPlayer.CurrentlyDrawnCard is Card card)
-                    DiscardPile.Push(card);
-                else if (CurrentPlayerIndex > index)
-                    --CurrentPlayerIndex;
+                if (Players[index].Player.Equals(_final_round_initiator))
+                    _final_round_initiator = null;
 
-                Array.Resize(ref Players, Players.Length - 1);
-                CurrentPlayerIndex = (CurrentPlayerIndex + Players.Length) % Players.Length;
+                if (_current_index == index && CurrentPlayer.CurrentlyDrawnCard is Card card)
+                    DiscardPile.Push(card);
+                else if (_current_index > index)
+                    --_current_index;
+
+                for (int i = Players.Count - 2; i >= index; --i)
+                    Players[i] = Players[i + 1];
+
+                Players.RemoveAt(Players.Count - 1);
+                NextPlayer(_current_index);
 
                 return true;
             }
@@ -151,13 +188,14 @@ namespace SKHEIJO
                 return false;
         }
 
-        public int NextPlayer() => NextPlayer(CurrentPlayerIndex + 1);
+        public int NextPlayer() => NextPlayer(_current_index + 1);
 
-        public int NextPlayer(int player_index) => CurrentPlayerIndex = (player_index + Players.Length) % Players.Length;
+        public int NextPlayer(int player_index) => _current_index = (player_index + Players.Count) % Players.Count;
 
         public void ResetAndDealCards(int total_cards, int first_player)
         {
-            total_cards = Math.Min(total_cards, Players.Length * 12 + 30);
+            CurrentGameState = GameState.Stopped;
+            total_cards = Math.Min(total_cards, Players.Count * 12 + 30);
 
             Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card(i % 15 - 2))).ToArray();
 
@@ -165,7 +203,7 @@ namespace SKHEIJO
 
             int index = 0;
 
-            for (int i = 0; i < Players.Length; i++)
+            for (int i = 0; i < Players.Count; i++)
             {
                 PlayerState player = Players[i];
 
@@ -186,11 +224,9 @@ namespace SKHEIJO
                 DrawPile.Push(cards[index++]);
 
             NextPlayer(first_player);
+            _final_round_initiator = null;
         }
 
-
-
-        //private void CurrentPlayer___TurnOverCard(int row, int column) => CurrentPlayer.GameField[row, column].visible = true;
 
         public bool CurrentPlayer___SwapDrawnCardWithGridAndThenDiscard(int row, int column)
         {
@@ -205,6 +241,20 @@ namespace SKHEIJO
                 return false;
         }
 
+        public bool CurrentPlayer___DiscardDrawnCardThenAndTurnOver(int row, int column)
+        {
+            if (!CurrentPlayer.GameField[row, column].visible)
+                if (CurrentPlayer.CurrentlyDrawnCard is Card drawn)
+                {
+                    DiscardPile.Push(drawn);
+                    CurrentPlayer.GameField[row, column] = (drawn, true);
+
+                    return true;
+                }
+
+            return false;
+        }
+
         public bool CurrentPlayer___DrawCard(bool from_discard_pile)
         {
             if (CurrentPlayer.CurrentlyDrawnCard is { })
@@ -215,19 +265,69 @@ namespace SKHEIJO
             return true;
         }
 
-        public bool CurrentPlayer___RemoveFullColumns(out int column_count)
+        public void CurrentPlayer___RemoveFullColumnsOfIdenticalCards(out int column_count)
         {
             PlayerState player = CurrentPlayer;
 
+            column_count = 0;
+
             for (int col = 0; col < player.Dimensions.columns; ++col)
+            {
+                Card[] cards = (from row in Enumerable.Range(0, player.Dimensions.rows)
+                                let item = player.GameField[row, col]
+                                where item.visible
+                                select item.card).Distinct().ToArray();
+
                 if (Enumerable.Range(0, player.Dimensions.rows).All(row => player.GameField[row, col].visible))
                 {
-                    
+                    player.RemoveColumn(col);
 
+                    ++column_count;
+                    --col;
                 }
-
-
-
+            }
         }
+
+        public bool CurrentPlayer___FinishesFinalRound()
+        {
+            PlayerState next = Players[(_current_index + 1 + Players.Count) % Players.Count];
+
+            return CurrentGameState is GameState.FinalRound && next.Player.Equals(_final_round_initiator) || next.IsFull;
+        }
+
+        public bool CurrentPlayer___TryEnterFinalRound()
+        {
+            if (CurrentGameState is GameState.Running && CurrentPlayer.IsFull)
+            {
+                _final_round_initiator = CurrentPlayer.Player;
+                CurrentGameState = GameState.FinalRound;
+
+                // TODO : ???
+
+                return true;
+            }
+            else
+                return false;
+        }
+
+        public IReadOnlyDictionary<Player, int> FinishGame()
+        {
+            CurrentGameState = GameState.Finished;
+
+            return (from p in Players
+                    let player = p.Player
+                    let points = p.VisiblePoints * (player.Equals(_final_round_initiator) ? 2 : 1)
+                    orderby points ascending
+                    select (player, points)).ToDictionary();
+        }
+
+    }
+
+    public enum GameState
+    {
+        Stopped,
+        Running,
+        FinalRound,
+        Finished,
     }
 }
