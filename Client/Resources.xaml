@@ -1,7 +1,7 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
-    <FontFamily x:Key="font_main">Bahnschrift</FontFamily>
+    <FontFamily x:Key="font_main">./assets/bahnschrift.ttf#Bahnschrift</FontFamily>
     <sys:Double x:Key="font_size">14</sys:Double>
 
     <Brush x:Key="color_fg">Black</Brush>

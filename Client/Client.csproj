@@ -31,6 +31,7 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
     <ItemGroup>
+      <None Remove="assets\bahnschrift.ttf" />
       <None Remove="default.dat" />
       <None Remove="splash-screen.png" />
       <None Remove="user.dat" />
@@ -48,6 +49,11 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Server\Server.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+      <Content Include="assets\bahnschrift.ttf">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
     <ItemGroup>
       <SplashScreen Include="assets\splash-screen.png">
