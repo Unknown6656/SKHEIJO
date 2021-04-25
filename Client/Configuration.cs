@@ -45,12 +45,16 @@ namespace SKHEIJO
                 INISection sec_auth = ini["author"];
                 Client? client = null;
 
-                if (ini.TryGetSection("client", out INISection? sec_client))
+                if (ini.HasSection("client"))
+                {
+                    INISection sec_client = ini["client"];
+
                     client = new(
                         sec_client["name"],
                         Guid.Parse(sec_client["guid"]),
                         sec_client["conn"]
                     );
+                }
 
                 return new(
                     new(
