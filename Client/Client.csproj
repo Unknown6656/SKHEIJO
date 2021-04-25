@@ -28,6 +28,7 @@
         <Company>unknown6656</Company>
         <Product>SKHEIJO by Unknown6656</Product>
         <Copyright>Copyright © 2021 - $([System.DateTime]::Today.ToString(yyyy)), unknown6656</Copyright>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
     <ItemGroup>
       <None Remove="default.dat" />
@@ -43,7 +44,7 @@
       </Content>
     </ItemGroup>
     <ItemGroup>
-      <PackageReference Include="Unknown6656.Core" Version="1.0.20.2" />
+      <PackageReference Include="Unknown6656.Core" Version="1.0.21" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Server\Server.csproj" />
