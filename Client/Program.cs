@@ -35,24 +35,66 @@ namespace SKHEIJO
 
             try
             {
-                $"Starting STA thread...".Log(LogSource.UI);
+                GameClient? game = null;
+                bool retry = false;
 
-                Thread thread = new(() =>
+                do
                 {
-                    App app = new(argv);
-                    Box<Configuration> box_c = configuration;
-                    ConnectWindow window = new(box_c);
+                    $"Starting {nameof(ConnectWindow)} STA thread...".Log(LogSource.UI);
 
-                    ret = app.Run(window);
-                    configuration = box_c!;
-                });
+                    Thread thread = new(() =>
+                    {
+                        App app = new(argv);
+                        Box<Configuration> box_c = configuration;
+                        Box<GameClient> box_g = new();
+                        ConnectWindow window = new(box_c, box_g);
 
-                thread.SetApartmentState(ApartmentState.STA);
-                thread.Start();
+                        ret = app.Run(window);
+                        retry = window.DialogResult ?? false;
+                        configuration = box_c!;
+                        game = box_g;
+                    });
 
-                $"STA thread started.".Log(LogSource.UI);
+                    thread.SetApartmentState(ApartmentState.STA);
+                    thread.Start();
 
-                thread.Join();
+                    $"{nameof(ConnectWindow)} STA thread started.".Log(LogSource.UI);
+
+                    thread.Join();
+
+                    if (!retry)
+                        break;
+                    else if (game is null)
+                        ; // TODO : message box with error
+                }
+                while (game is null);
+
+
+
+                /// TODO : ????
+
+
+
+
+                if (game is { } g)
+                {
+                    $"Starting {nameof(GameWindow)} STA thread...".Log(LogSource.UI);
+
+                    Thread thread = new(() =>
+                    {
+                        App app = new(argv);
+                        GameWindow window = new(game);
+
+                        ret = app.Run(window);
+                    });
+
+                    thread.SetApartmentState(ApartmentState.STA);
+                    thread.Start();
+
+                    $"{nameof(GameWindow)} STA thread started.".Log(LogSource.UI);
+
+                    thread.Join();
+                }
             }
             catch (Exception ex)
             when (!Debugger.IsAttached)
@@ -84,3 +126,29 @@ namespace SKHEIJO
         }
     }
 }
+
+
+
+//string? s;
+//
+//do
+//    s = Console.ReadLine();
+//while (s is null);
+//
+//using GameClient client = new(Guid.NewGuid(), s);
+//
+//Console.WriteLine("type 'q' to exit");
+//
+//while (true)
+//{
+//    string line = Console.ReadLine() ?? "";
+//
+//    if (line == "q")
+//        break;
+//    else
+//        From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
+//}
+//
+//client.Dispose();
+
+

@@ -108,7 +108,7 @@ namespace SKHEIJO
                             LogSeverity.Info => (ConsoleColor.Cyan, "INFO"),
                             LogSeverity.Warning => (ConsoleColor.Yellow, "WARN"),
                             LogSeverity.Error => (ConsoleColor.Red, "ERR."),
-                            _ => (ConsoleColor.White, "    "),
+                            _ => (ConsoleColor.White, "DBG."),
                         };
 
                         Console.ForegroundColor = ConsoleColor.DarkGray;
