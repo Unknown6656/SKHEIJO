@@ -13,6 +13,7 @@
         <Setter Property="Foreground" Value="{StaticResource color_fg}"/>
         <Setter Property="Background" Value="{StaticResource color_bg}"/>
         <Setter Property="BorderBrush" Value="{StaticResource color_fg}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="BorderThickness" Value="1"/>
     </Style>
     <Style TargetType="{x:Type Button}">
@@ -21,6 +22,8 @@
         <Setter Property="Foreground" Value="{StaticResource color_fg}"/>
         <Setter Property="Background" Value="{StaticResource color_bg}"/>
         <Setter Property="BorderBrush" Value="{StaticResource color_fg}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
         <Setter Property="BorderThickness" Value="1"/>
     </Style>
     <Style TargetType="{x:Type Label}">
@@ -29,6 +32,7 @@
         <Setter Property="Foreground" Value="{StaticResource color_fg}"/>
         <Setter Property="BorderBrush" Value="{StaticResource color_fg}"/>
         <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="BorderThickness" Value="0"/>
     </Style>
     <Style TargetType="{x:Type TextBlock}">
