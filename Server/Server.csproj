@@ -29,6 +29,7 @@
         <Copyright>Copyright © 2021 - $([System.DateTime]::Today.ToString(yyyy)), unknown6656</Copyright>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Unknown6656.Core" Version="1.0.20.2" />
+        <PackageReference Include="Fleck" Version="1.2.0" />
+        <PackageReference Include="Unknown6656.Core" Version="1.0.21" />
     </ItemGroup>
 </Project>
