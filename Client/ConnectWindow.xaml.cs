@@ -1,17 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Mail;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Windows.Documents;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
+using System.Net.Mail;
+using System;
 
 namespace SKHEIJO
 {
@@ -19,12 +9,14 @@ namespace SKHEIJO
         : Window
     {
         public Box<Configuration> Configuration { get; }
+        public Box<GameClient> GameClient { get; }
 
 
-        public ConnectWindow(Box<Configuration> configuration)
+        public ConnectWindow(Box<Configuration> configuration, Box<GameClient> game)
         {
             InitializeComponent();
 
+            GameClient = game;
             Configuration = configuration;
             Loaded += ConnectWindow_Loaded;
             btn_cancel.Click += Btn_cancel_Click;
@@ -64,7 +56,11 @@ namespace SKHEIJO
                 });
         }
 
-        private void Btn_cancel_Click(object sender, RoutedEventArgs e) => Close();
+        private void Btn_cancel_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = false;
+            Close();
+        }
 
         private void Btn_connect_Click(object sender, RoutedEventArgs e)
         {
@@ -72,39 +68,17 @@ namespace SKHEIJO
                 try
                 {
                     string text = tb_connect_string.Text.Trim();
-                    GameClient game = new(client.UUID, text);
+
+                    GameClient.Value = new(client.UUID, text);
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    ex.Err(LogSource.UI);
                 }
+
+            DialogResult = true;
+
+            Close();
         }
-
-
-        //string? s;
-        //
-        //do
-        //    s = Console.ReadLine();
-        //while (s is null);
-        //
-        //using GameClient client = new(Guid.NewGuid(), s);
-        //
-        //Console.WriteLine("type 'q' to exit");
-        //
-        //while (true)
-        //{
-        //    string line = Console.ReadLine() ?? "";
-        //
-        //    if (line == "q")
-        //        break;
-        //    else
-        //        From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
-        //}
-        //
-        //client.Dispose();
-
-
-
-
     }
 }
