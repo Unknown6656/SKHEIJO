@@ -24,6 +24,7 @@ namespace SKHEIJO
 
             $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log();
 
+            Configuration configuration = Configuration.TryReadConfig(new("user.dat")) ?? Configuration.TryReadConfig(new("default.dat")) ?? Configuration.Default;
             int ret = -1;
 
             try
@@ -33,8 +34,10 @@ namespace SKHEIJO
                 Thread thread = new(() =>
                 {
                     App app = new(argv);
+                    ConnectWindow window = new(configuration);
 
-                    ret = app.Run(new GameWindow());
+                    ret = app.Run(window);
+                    configuration = window.Configuration;
                 });
 
                 thread.SetApartmentState(ApartmentState.STA);
@@ -48,6 +51,10 @@ namespace SKHEIJO
             when (!Debugger.IsAttached)
             {
                 ex.Err();
+            }
+            finally
+            {
+                configuration.WriteConfig(new("user.dat"));
             }
 
             await Logger.Stop();

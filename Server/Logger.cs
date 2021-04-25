@@ -26,6 +26,9 @@ namespace SKHEIJO
 
         public static void Start() => Task.Factory.StartNew(async delegate
         {
+            if (IsRunning)
+                return;
+
             Log("Logger has been started.");
 
             IsRunning = true;
@@ -78,6 +81,9 @@ namespace SKHEIJO
 
         public static async Task Stop()
         {
+            if (!IsRunning)
+                return;
+
             Log("Logger has been stopped.");
 
             IsRunning = false;

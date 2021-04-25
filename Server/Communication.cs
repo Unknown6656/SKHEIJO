@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Unknown6656.IO;
+using Unknown6656.Mathematics;
 
 namespace SKHEIJO
 {
@@ -21,6 +22,8 @@ namespace SKHEIJO
 
     public sealed class ConnectionString
     {
+        private const string SCRAMBLER = "Vxawrn2v/IF4E+bYO5ueLd9y3WsCARmTXDpNKGBZhtkcPM=0zjQfoU7S6qJH1gi8l";
+ 
         public ushort Port { get; }
         public IPAddress Address { get; }
         public bool IsIPv6 { get; }
@@ -45,12 +48,19 @@ namespace SKHEIJO
             IsIPv6 = address.AddressFamily is AddressFamily.InterNetworkV6;
         }
 
-        public override string ToString() =>
-            From.ArrayOfSources(
+        public override string ToString()
+        {
+            char[] b64 = From.ArrayOfSources(
                 From.Unmanaged(IsIPv6),
                 From.String(Address.ToString()),
                 From.Unmanaged(Port)
-            ).ToBase64();
+            ).ToBase64().ToCharArray();
+
+            for (int i = 0; i < b64.Length; ++i)
+                b64[i] = SCRAMBLER[(SCRAMBLER.IndexOf(b64[i]) + i) % SCRAMBLER.Length];
+
+            return new string(b64);
+        }
 
         public override int GetHashCode() => ToString().GetHashCode();
 
@@ -67,8 +77,13 @@ namespace SKHEIJO
 
         public static ConnectionString FromString(string connection_string)
         {
-            From[] parts = From.Base64(connection_string)
-                               .ToArrayOfSources();
+            char[] input = connection_string.ToCharArray();
+            int len = SCRAMBLER.Length;
+
+            for (int i = 0; i < input.Length; ++i)
+                input[i] = SCRAMBLER[((SCRAMBLER.IndexOf(input[i]) - i) % len + len) % len];
+
+            From[] parts = From.Base64(new(input)).ToArrayOfSources();
 
             return new(
                 IPAddress.Parse(parts[1].ToString()),
