@@ -1,0 +1,16 @@
+@charset "UTF-8";
+@import '../font/harrypotter.css';
+@import '../font/bahnschrift.css';
+
+
+:root {
+    --font-main: 'Bahnschrift', 'Helvetica', 'Arial', 'Lucida Grande', sans-serif;
+    --font-mono: 'Consolas', 'Courier New', 'Courier', 'Lucida Console', 'Ubuntu Mono', monospace;
+    --color-fg: black;
+    --color-bg: lightgray;
+    /* --color-links: #4fb9be; */
+    --color-links: #003289;
+    /* --blur-radius: 20px; */
+}
+
+
