@@ -18,23 +18,28 @@ namespace SKHEIJO
     public sealed partial class ConnectWindow
         : Window
     {
-        public Configuration Configuration { get; private set; }
+        public Box<Configuration> Configuration { get; }
 
 
-        public ConnectWindow(Configuration configuration)
+        public ConnectWindow(Box<Configuration> configuration)
         {
             InitializeComponent();
 
             Configuration = configuration;
             Loaded += ConnectWindow_Loaded;
+            btn_cancel.Click += Btn_cancel_Click;
+            btn_connect.Click += Btn_connect_Click;
         }
 
         private void ConnectWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            lb_author.Text = Configuration.Author.Name;
+            Configuration conf = Configuration.Value!;
+
+            lb_author.Text = conf.Author.Name;
+            tb_connect_string.Text = conf.Client?.LastConnection;
             tbl_contact.Inlines.Clear();
 
-            if (Configuration.Author.Email is string mail)
+            if (conf.Author.Email is string mail)
             {
                 if (!mail.Contains("://"))
                 {
@@ -48,17 +53,32 @@ namespace SKHEIJO
                     NavigateUri = new(mail)
                 });
 
-                if (Configuration.Author.Phone is string)
+                if (conf.Author.Phone is string)
                     tbl_contact.Inlines.Add(new Run(" or "));
             }
 
-            if (Configuration.Author.Phone is string phone)
+            if (conf.Author.Phone is string phone)
                 tbl_contact.Inlines.Add(new Hyperlink(new Run(phone))
                 {
-                    NavigateUri = new("tel://" + phone)
+                    NavigateUri = new("tel:" + phone)
                 });
         }
 
+        private void Btn_cancel_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void Btn_connect_Click(object sender, RoutedEventArgs e)
+        {
+            if (Configuration.Value?.Client is Client client)
+                try
+                {
+                    string text = tb_connect_string.Text.Trim();
+                    GameClient game = new(client.UUID, text);
+                }
+                catch
+                {
+
+                }
+        }
 
 
         //string? s;
