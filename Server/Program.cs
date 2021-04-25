@@ -18,8 +18,8 @@ namespace Server
 
 
 
-            // using GameServer server = await GameServer.CreateGameServer(14488, "lol kay");
-            using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488, "lol kay");
+            // using GameServer server = await GameServer.CreateGameServer(14488, 14499, "lol kay");
+            using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488, 14499, "lol kay");
 
             Console.WriteLine(server.ConnectionString);
             Console.WriteLine("\npress ESC to exit.");
@@ -32,7 +32,7 @@ namespace Server
                 do
                     while (!Console.KeyAvailable)
                         await Task.Delay(20);
-                while (Console.ReadKey(true).Key is ConsoleKey.Escape);
+                while (Console.ReadKey(true).Key != ConsoleKey.Escape);
 
                 server.Stop();
             }

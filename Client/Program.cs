@@ -22,35 +22,42 @@ namespace SKHEIJO
         {
             Logger.Start();
 
-            $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log();
+            $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log(LogSource.UI);
 
             Configuration configuration = Configuration.TryReadConfig(new("user.dat")) ?? Configuration.TryReadConfig(new("default.dat")) ?? Configuration.Default;
             int ret = -1;
 
+            if (configuration.Client is null)
+                configuration = configuration with
+                {
+                    Client = new($"{Environment.UserName}-{Guid.NewGuid().GetHashCode() & 0xffff:x4}", Guid.NewGuid(), "")
+                };
+
             try
             {
-                $"Starting STA thread...".Log();
+                $"Starting STA thread...".Log(LogSource.UI);
 
                 Thread thread = new(() =>
                 {
                     App app = new(argv);
-                    ConnectWindow window = new(configuration);
+                    Box<Configuration> box_c = configuration;
+                    ConnectWindow window = new(box_c);
 
                     ret = app.Run(window);
-                    configuration = window.Configuration;
+                    configuration = box_c!;
                 });
 
                 thread.SetApartmentState(ApartmentState.STA);
                 thread.Start();
 
-                $"STA thread started.".Log();
+                $"STA thread started.".Log(LogSource.UI);
 
                 thread.Join();
             }
             catch (Exception ex)
             when (!Debugger.IsAttached)
             {
-                ex.Err();
+                ex.Err(LogSource.Client);
             }
             finally
             {
@@ -64,14 +71,14 @@ namespace SKHEIJO
 
         protected override void OnStartup(StartupEventArgs e)
         {
-            $"Application started.".Log();
+            $"Application started.".Log(LogSource.UI);
 
             base.OnStartup(e);
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
-            $"Application exiting with {e.ApplicationExitCode}".Log();
+            $"Application exiting with {e.ApplicationExitCode}".Log(LogSource.UI);
 
             base.OnExit(e);
         }
