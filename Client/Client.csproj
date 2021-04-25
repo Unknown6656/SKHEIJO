@@ -31,6 +31,7 @@
     </PropertyGroup>
     <ItemGroup>
       <None Remove="default.dat" />
+      <None Remove="splash-screen.png" />
       <None Remove="user.dat" />
     </ItemGroup>
     <ItemGroup>
@@ -46,5 +47,10 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Server\Server.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+      <SplashScreen Include="assets\splash-screen.png">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </SplashScreen>
     </ItemGroup>
 </Project>
