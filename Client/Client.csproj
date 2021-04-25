@@ -30,6 +30,18 @@
         <Copyright>Copyright © 2021 - $([System.DateTime]::Today.ToString(yyyy)), unknown6656</Copyright>
     </PropertyGroup>
     <ItemGroup>
+      <None Remove="default.dat" />
+      <None Remove="user.dat" />
+    </ItemGroup>
+    <ItemGroup>
+      <Content Include="default.dat">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <Content Include="user.dat">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+    <ItemGroup>
       <PackageReference Include="Unknown6656.Core" Version="1.0.20.2" />
     </ItemGroup>
     <ItemGroup>
