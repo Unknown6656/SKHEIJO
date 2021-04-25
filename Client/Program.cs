@@ -1,45 +1,72 @@
-﻿using System.Diagnostics;
-using System.Text;
+﻿using System.Threading.Tasks;
+using System.Threading;
+using System.Diagnostics;
+using System.Windows;
 using System;
 
-using SKHEIJO;
-using Unknown6656.IO;
+using Unknown6656.Common;
 
-Logger.Start();
-
-try
+namespace SKHEIJO
 {
-    string? s;
-
-    do
-        s = Console.ReadLine();
-    while (s is null);
-
-    using GameClient client = new(Guid.NewGuid(), s);
-
-    Console.WriteLine("type 'q' to exit");
-
-    while (true)
+    public sealed class App
+        : Application
     {
-        string line = Console.ReadLine() ?? "";
+        public string[] Arguments { get; }
 
-        if (line == "q")
-            break;
-        else
-            From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
-    }
 
-    client.Dispose();
-}
-catch (Exception ex)
-{
-    ex.Err();
+        static App() => Logger.Start();
 
-    await Logger.Stop();
+        public App(string[] argv) => Arguments = argv;
 
-    if (Debugger.IsAttached)
-    {
-        Console.WriteLine("Press any key to exit...");
-        Console.ReadKey(true);
+        public static async Task<int> Main(string[] argv)
+        {
+            Logger.Start();
+
+            $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log();
+
+            int ret = -1;
+
+            try
+            {
+                $"Starting STA thread...".Log();
+
+                Thread thread = new(() =>
+                {
+                    App app = new(argv);
+
+                    ret = app.Run(new GameWindow());
+                });
+
+                thread.SetApartmentState(ApartmentState.STA);
+                thread.Start();
+
+                $"STA thread started.".Log();
+
+                thread.Join();
+            }
+            catch (Exception ex)
+            when (!Debugger.IsAttached)
+            {
+                ex.Err();
+            }
+
+            await Logger.Stop();
+
+            return ret;
+        }
+
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            $"Application started.".Log();
+
+            base.OnStartup(e);
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            $"Application exiting with {e.ApplicationExitCode}".Log();
+
+            base.OnExit(e);
+        }
     }
 }
