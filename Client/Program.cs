@@ -35,8 +35,7 @@ namespace SKHEIJO
 
             try
             {
-                GameClient? game = null;
-                bool retry = false;
+                ConnectWindowInterop interop = new(configuration);
 
                 do
                 {
@@ -45,14 +44,9 @@ namespace SKHEIJO
                     Thread thread = new(() =>
                     {
                         App app = new(argv);
-                        Box<Configuration> box_c = configuration;
-                        Box<GameClient> box_g = new();
-                        ConnectWindow window = new(box_c, box_g);
+                        ConnectWindow window = new(interop);
 
                         ret = app.Run(window);
-                        retry = window.DialogResult ?? false;
-                        configuration = box_c!;
-                        game = box_g;
                     });
 
                     thread.SetApartmentState(ApartmentState.STA);
@@ -62,12 +56,14 @@ namespace SKHEIJO
 
                     thread.Join();
 
-                    if (!retry)
+                    configuration = interop.Configuration;
+
+                    if (!interop.DialogResult)
                         break;
-                    else if (game is null)
+                    else if (interop.GameClient is null)
                         ; // TODO : message box with error
                 }
-                while (game is null);
+                while (interop.GameClient is null);
 
 
 
@@ -76,14 +72,14 @@ namespace SKHEIJO
 
 
 
-                if (game is { } g)
+                if (interop.GameClient is { } g)
                 {
                     $"Starting {nameof(GameWindow)} STA thread...".Log(LogSource.UI);
 
                     Thread thread = new(() =>
                     {
                         App app = new(argv);
-                        GameWindow window = new(game);
+                        GameWindow window = new(interop.GameClient);
 
                         ret = app.Run(window);
                     });

@@ -5,19 +5,27 @@ using System;
 
 namespace SKHEIJO
 {
+    public sealed class ConnectWindowInterop
+    {
+        public Configuration Configuration { get; set; }
+        public GameClient? GameClient { get; set; }
+        public bool DialogResult { get; set; }
+
+
+        public ConnectWindowInterop(Configuration configuration) => Configuration = configuration;
+    }
+
     public sealed partial class ConnectWindow
         : Window
     {
-        public Box<Configuration> Configuration { get; }
-        public Box<GameClient> GameClient { get; }
+        public ConnectWindowInterop Interop { get; }
 
 
-        public ConnectWindow(Box<Configuration> configuration, Box<GameClient> game)
+        public ConnectWindow(ConnectWindowInterop interop)
         {
             InitializeComponent();
 
-            GameClient = game;
-            Configuration = configuration;
+            Interop = interop;
             Loaded += ConnectWindow_Loaded;
             btn_cancel.Click += Btn_cancel_Click;
             btn_connect.Click += Btn_connect_Click;
@@ -25,13 +33,11 @@ namespace SKHEIJO
 
         private void ConnectWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            Configuration conf = Configuration.Value!;
-
-            lb_author.Text = conf.Author.Name;
-            tb_connect_string.Text = conf.Client?.LastConnection;
+            lb_author.Text = Interop.Configuration.Author.Name;
+            tb_connect_string.Text = Interop.Configuration.Client?.LastConnection;
             tbl_contact.Inlines.Clear();
 
-            if (conf.Author.Email is string mail)
+            if (Interop.Configuration.Author.Email is string mail)
             {
                 if (!mail.Contains("://"))
                 {
@@ -45,11 +51,11 @@ namespace SKHEIJO
                     NavigateUri = new(mail)
                 });
 
-                if (conf.Author.Phone is string)
+                if (Interop.Configuration.Author.Phone is string)
                     tbl_contact.Inlines.Add(new Run(" or "));
             }
 
-            if (conf.Author.Phone is string phone)
+            if (Interop.Configuration.Author.Phone is string phone)
                 tbl_contact.Inlines.Add(new Hyperlink(new Run(phone))
                 {
                     NavigateUri = new("tel:" + phone)
@@ -58,25 +64,26 @@ namespace SKHEIJO
 
         private void Btn_cancel_Click(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            Interop.DialogResult = false;
+
             Close();
         }
 
         private void Btn_connect_Click(object sender, RoutedEventArgs e)
         {
-            if (Configuration.Value?.Client is Client client)
+            if (Interop.Configuration.Client is Client client)
                 try
                 {
                     string text = tb_connect_string.Text.Trim();
 
-                    GameClient.Value = new(client.UUID, text);
+                    Interop.GameClient = new(client.UUID, text);
                 }
                 catch (Exception ex)
                 {
                     ex.Err(LogSource.UI);
                 }
 
-            DialogResult = true;
+            Interop.DialogResult = true;
 
             Close();
         }

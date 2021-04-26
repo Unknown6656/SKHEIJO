@@ -19,17 +19,6 @@ using Unknown6656.IO;
 
 namespace SKHEIJO
 {
-    public sealed class Box<T>
-        where T : class
-    {
-        public T? Value;
-
-
-        public static implicit operator Box<T>(T? value) => new Box<T> { Value = value };
-
-        public static implicit operator T?(Box<T>? box) => box?.Value;
-    }
-
     public record Player(Guid UUID)
     {
         public Union<TcpClient, WebSocketConnection>? Client { get; init; }
@@ -132,7 +121,7 @@ namespace SKHEIJO
 
     public interface ICommunicationData { }
 
-
+    public record Communication_ServerInformation(string ServerName) : ICommunicationData;
 
 
 
@@ -169,7 +158,7 @@ namespace SKHEIJO
 
             if (JsonSerializer.Deserialize<internal_data>(json) is internal_data data)
             {
-                Type type = Type.GetType(data.FullType ?? data.Type);
+                Type? type = Type.GetType(data.FullType ?? data.Type);
 
                 // TODO
 
@@ -402,7 +391,7 @@ namespace SKHEIJO
                 };
 
                 AddPlayer(player);
-                Notify(player, );
+                Notify(player, new Communication_ServerInformation(ServerName));
 
                 socket.OnClose = () => RemovePlayer(player);
                 socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);

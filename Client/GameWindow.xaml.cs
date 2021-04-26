@@ -15,5 +15,9 @@ namespace SKHEIJO
 
             GameClient = game;
         }
+
+
+
+        //        From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
     }
 }
