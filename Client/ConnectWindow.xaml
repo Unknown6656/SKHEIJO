@@ -15,7 +15,7 @@
     </Window.Resources>
     <Grid>
         <Image Source="assets/splash-screen.png"/>
-        <Grid Margin="80 110">
+        <Grid Margin="80">
             <Grid.Background>
                 <ImageBrush ImageSource="assets/splash-screen.png" Stretch="None"/>
             </Grid.Background>
@@ -24,23 +24,30 @@
             </Grid.Effect>
             <Rectangle Fill="{DynamicResource color_bg}" Opacity=".5"/>
         </Grid>
-        <Grid Margin="100 130">
+        <Grid Margin="100">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
+                <RowDefinition Height="50"/>
+                <RowDefinition Height="30"/>
                 <RowDefinition Height="30"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="30"/>
             </Grid.RowDefinitions>
-            <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" >
+            <Label Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" FontSize="40">Welcome to SKHEIJO!</Label>
+            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap" TextAlignment="Justify">
+                SKHEIJO is a digital adaptation of the German board game
+                <Hyperlink NavigateUri="https://www.magilano.com/produkt/skyjo">SKYJO</Hyperlink>.
+            </TextBlock>
+            <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="tb_connect_string"/>
-                <Label IsHitTestVisible="False" Content="Enter the connection string here." VerticalAlignment="Center" Foreground="DarkGray">
+                <Label IsHitTestVisible="False" Content="Enter the connection code here." VerticalAlignment="Center" Foreground="gray">
                     <Label.Style>
                         <Style TargetType="{x:Type Label}">
                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -53,17 +60,17 @@
                     </Label.Style>
                 </Label>
             </Grid>
-            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap" TextAlignment="Justify" Margin="0 10">
-                Enter the connection string into the box above to connect to a game.
+            <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap" TextAlignment="Justify">
+                Enter the connection code into the box above in order to connect to a game.
                 <LineBreak/>
-                The connection string uniquely identifies a game server and acts a little bit like a password.
-                The string is usually represented as a 40 character long sequence such as 'ArmTXDuNKGBZZOkcPQ8chnT...'
+                The connection code uniquely identifies a game server and allows you to join a game.
+                The code is usually represented as a sequence of seemingly random characters such as 'MTI3LjAuMC4xJDE0NDg4JDE0NDk5'.
                 <LineBreak/>
                 <LineBreak/>
                 Feel free to contact the application's developer (<Run x:Name="lb_author"/>) via <TextBlock x:Name="tbl_contact"/> should you run into any difficulties or errors.
             </TextBlock>
-            <Button x:Name="btn_cancel" Grid.Column="0" Grid.Row="2" Content="Cancel"/>
-            <Button x:Name="btn_connect" Grid.Column="2" Grid.Row="2" Content="Connect ...">
+            <Button x:Name="btn_cancel" Grid.Column="0" Grid.Row="4" Content="Cancel"/>
+            <Button x:Name="btn_connect" Grid.Column="2" Grid.Row="4" Content="Connect ...">
                 <Button.Style>
                     <Style TargetType="{x:Type Button}">
                         <Setter Property="Visibility" Value="Visible"/>
