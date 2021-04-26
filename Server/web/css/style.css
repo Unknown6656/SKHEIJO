@@ -5,19 +5,36 @@
 :root {
     --font-main: 'Bahnschrift', 'Helvetica', 'Arial', 'Lucida Grande', sans-serif;
     --font-mono: 'Consolas', 'Courier New', 'Courier', 'Lucida Console', 'Ubuntu Mono', monospace;
+
     --color-fg: black;
     --color-bg: white;
     --color-control-bg: lightgray;
-    --font-size: 12pt;
-    /* --color-links: #4fb9be; */
     --color-links: #003289;
-    /* --blur-radius: 20px; */
+
+    --font-size: 12pt;
+
+    --min-page-width: 360px;
 
     background-color: var(--color-bg);
     font-family: var(--font-main);
     font-size: var(--font-size);
     color: var(--color-fg);
 }
+
+* {
+    -webkit-box-sizing: border-box;
+       -moz-box-sizing: border-box;
+            box-sizing: border-box;
+
+    transition: opacity .3s;
+}
+
+.hidden {
+    pointer-events: none;
+    opacity: 0;
+}
+
+
 
 input,
 button,
@@ -28,4 +45,132 @@ textarea {
     font-family: var(--font-main);
     font-size: var(--font-size);
     color: var(--color-fg);
+    padding: 2px;
+}
+
+a {
+    text-decoration: underline;
+    color: var(--color-links);
+    cursor: pointer;
+}
+
+
+html {
+    overflow: hidden;
+    height: 100%;
+}
+
+body {
+    min-height: 100%;
+}
+
+#main-container {
+    background-image: url('../img/background.png');
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    position: fixed;
+    height: 100%;
+    width: 100%;
+    bottom: 0px;
+    right: 0px;
+    left: 0px;
+    top: 0px;
+}
+
+#login-container {
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    height: 100%;
+}
+
+#login-form {
+    border: 1px solid var(--color-fg);
+    background-color: var(--color-bg);
+    text-align: justify;
+    word-break: normal;
+    position: absolute;
+    padding: 20px;
+    width: 500px;
+}
+
+#login-loading,
+#login-failed {
+    background-color: var(--color-bg);
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    display: flex;
+    height: 100%;
+    width: 100%;
+    margin: 0px;
+    bottom: 0px;
+    right: 0px;
+    left: 0px;
+    top: 0px;
+
+    opacity: 0;
+}
+
+#login-form.loading #login-loading,
+#login-form.failed #login-failed {
+    pointer-events: all;
+    opacity: 1;
+}
+
+#login-loading span {
+    padding-bottom: 100px;
+    font-size: 3em;
+}
+
+#login-loading span::after {
+    background-image: url('../img/loading.svg');
+    left: calc(50% - 50px);
+    position: absolute;
+    display: block;
+    height: 100px;
+    width: 100px;
+    content: '';
+
+    -webkit-animation: spin 6s linear infinite;
+       -moz-animation: spin 6s linear infinite;
+            animation: spin 6s linear infinite;
+}
+
+#login-failed span {
+    text-align: justify;
+    word-break: normal;
+    padding: 20px;
+}
+
+#login-string {
+    width: 100%;
+}
+
+#login-start {
+    width: 200px;
+}
+
+#login-failed-dismiss {
+    width: 100%;
+}
+
+#login-hint {
+    font-style: italic;
+    font-weight: bold;
+    font-size: .9em;
+    color: firebrick;
+}
+
+#game-container {
+    background-color: cyan;
+}
+
+
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
 }
