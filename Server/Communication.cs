@@ -14,9 +14,10 @@ using System.Threading.Tasks;
 
 using Fleck;
 
-using Unknown6656;
 using Unknown6656.Common;
 using Unknown6656.IO;
+using Unknown6656;
+using System.Numerics;
 
 namespace SKHEIJO
 {
@@ -27,12 +28,20 @@ namespace SKHEIJO
 
         public override string ToString()
         {
-            string remote = Client?.Match(
-                tcp => tcp.Client?.RemoteEndPoint is IPEndPoint ep ? $"(tcp) {ep}" : "tcp not connected",
-                web => $"(web) {web.ConnectionInfo.ClientIpAddress}:{web.ConnectionInfo.ClientPort}"
-            ) ?? "not connected";
+            string? remote = null;
 
-            return $"{UUID} {remote}";
+            try
+            {
+                remote = Client?.Match(
+                    tcp => $"(tcp) {tcp.Client?.RemoteEndPoint}",
+                    web => $"(web) {web.ConnectionInfo.ClientIpAddress}:{web.ConnectionInfo.ClientPort}"
+                );
+            }
+            catch
+            {
+            }
+
+            return $"{UUID} {remote ?? "not connected"}";
         }
     }
 
@@ -178,9 +187,7 @@ namespace SKHEIJO
                     if (!CommunicationData.KnownDerivativeTypes.TryGetValue(data.Type, out Type? type))
                         type = Type.GetType(data.FullType ?? data.Type);
 
-                    string inner_json = data.Data.ToString();
-
-                    if (type is { } && JsonSerializer.Deserialize(inner_json, type) is CommunicationData comm)
+                    if (type is { } && data.Data?.ToString() is string inner_json && JsonSerializer.Deserialize(inner_json, type) is CommunicationData comm)
                         return (comm, data.Conversation);
                 }
             }
@@ -224,8 +231,9 @@ namespace SKHEIJO
         public bool IsRunning => _running != 0;
         public string ServerName { get; }
 
-        private readonly ConcurrentDictionary<Player, ConcurrentQueue<RawCommunicationPacket>> _players;
+        private readonly ConcurrentDictionary<Player, Union<BinaryWriter, WebSocketConnection>> _players;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _incoming;
+        private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _outgoing;
         private volatile int _running;
 
 
@@ -244,6 +252,7 @@ namespace SKHEIJO
             WebSocketServer.RestartAfterListenError = true;
             _players = new();
             _incoming = new();
+            _outgoing = new();
         }
 
         public void Start()
@@ -269,6 +278,7 @@ namespace SKHEIJO
                             await Task.Delay(5);
                 });
                 Task.Factory.StartNew(ProcessIncomingMessages);
+                Task.Factory.StartNew(ProcessOutgoingMessages);
             }
         }
 
@@ -278,9 +288,9 @@ namespace SKHEIJO
             {
                 TCPListener.Stop();
 
-                foreach ((Player player, ConcurrentQueue<RawCommunicationPacket> outgoing) in _players)
+                foreach ((Player player, Union<BinaryWriter, WebSocketConnection> connection) in _players)
                 {
-                    outgoing.Clear();
+                    connection.AsCase0?.Dispose();
                     player.Client?.Match(
                         tcp =>
                         {
@@ -297,15 +307,13 @@ namespace SKHEIJO
 
         public void Dispose() => Stop();
 
-        private ConcurrentQueue<RawCommunicationPacket> AddPlayer(Player player)
+        private void AddPlayer(Player player, Union<BinaryWriter, WebSocketConnection> connection)
         {
-            ConcurrentQueue<RawCommunicationPacket> outgoing = _players[player] = new();
+            _players[player] = connection;
 
             $"{player} connected.".Info(LogSource.Server);
 
             OnPlayerJoined?.Invoke(player);
-
-            return outgoing;
         }
 
         private void RemovePlayer(Player player)
@@ -330,8 +338,8 @@ namespace SKHEIJO
                 using (BinaryWriter writer = new(stream))
                 {
                     Guid uuid = reader.ReadNative<Guid>();
-                    ConcurrentQueue<RawCommunicationPacket> outgoing = AddPlayer(player = new(uuid) { Client = client });
 
+                    AddPlayer(player = new(uuid) { Client = client }, writer);
                     writer.Write(ServerName);
 
                     ArraySegment<byte> keepalive_buffer = new byte[1];
@@ -346,19 +354,6 @@ namespace SKHEIJO
                         else
                         {
                             bool idle = true;
-
-                            while (outgoing.TryDequeue(out RawCommunicationPacket packet))
-                                try
-                                {
-                                    idle = false;
-                                    packet.WriteTo(writer);
-
-                                    $"{packet} sent to {player}.".Log(LogSource.Server);
-                                }
-                                catch (Exception ex)
-                                {
-                                    ex.Warn(LogSource.Server);
-                                }
 
                             while (stream.DataAvailable)
                                 try
@@ -413,8 +408,8 @@ namespace SKHEIJO
                 {
                     Client = socket
                 };
+                AddPlayer(player, socket);
 
-                AddPlayer(player);
                 Notify(player, new CommunicationData_ServerInformation(ServerName));
 
                 socket.OnClose = () => RemovePlayer(player);
@@ -426,6 +421,40 @@ namespace SKHEIJO
             }
 
             socket.Close();
+        }
+
+        private async Task ProcessOutgoingMessages()
+        {
+            while (_running != 0)
+            {
+                bool any = false;
+
+                while (_outgoing.TryDequeue(out var item))
+                    try
+                    {
+                        any = true;
+                        (Player player, RawCommunicationPacket packet) = item;
+
+                        if (_players.TryGetValue(player, out var connection))
+                        {
+                            connection.Match(
+                                packet.WriteTo,
+                                ws => ws.Send(packet.Message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id))
+                            );
+
+                            $"{packet} sent to '{player}'.".Log(LogSource.Server);
+                        }
+                        else
+                            $"Target '{player}' not found.".Warn(LogSource.Server);
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Warn(LogSource.Server);
+                    }
+
+                if (!any)
+                    await Task.Delay(1);
+            }
         }
 
         private async Task ProcessIncomingMessages()
@@ -442,8 +471,8 @@ namespace SKHEIJO
                         CommunicationData? message = item.Item2.DeserializeData();
                         CommunicationData? reply = OnIncomingData?.Invoke(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
 
-                        if (reply is { } && _players.TryGetValue(item.Item1, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
-                            outgoing.Enqueue(RawCommunicationPacket.SerializeData(item.Item2.ConversationIdentifier, reply));
+                        if (reply is { })
+                            _outgoing.Enqueue((item.Item1, RawCommunicationPacket.SerializeData(item.Item2.ConversationIdentifier, reply)));
                     }
                     catch (Exception ex)
                     {
@@ -463,15 +492,7 @@ namespace SKHEIJO
                 $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
         }
 
-        public bool Notify(Player player, CommunicationData data)
-        {
-            bool res;
-
-            if (res = _players.TryGetValue(player, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
-                outgoing?.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
-
-            return res;
-        }
+        public void Notify(Player player, CommunicationData data) => _outgoing.Enqueue((player, RawCommunicationPacket.SerializeData(Guid.Empty, data)));
 
         public void Notify(IEnumerable<Player> players, CommunicationData data) => players.Do(p => Notify(p, data));
 
