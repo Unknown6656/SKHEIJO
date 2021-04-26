@@ -16,6 +16,36 @@ var outgoing_queue = undefined;
 // TODO
 
 
+function decode_connection_string(conn_string)
+{
+    try
+    {
+        let parts = atob(conn_string).split('$');
+
+        if (parts.length > 2)
+            return parts[0] + ':' + parts[2];
+    }
+    catch (e)
+    {
+    }
+
+    return undefined;
+}
+
+function socket_error()
+{
+    if (socket !== undefined && socket.readyState != WebSocket.OPEN)
+    {
+        $("#login-form").addClass("failed");
+
+        socket_close();
+    }
+    else
+    {
+        alert("lol");
+        // TODO : report error
+    }
+}
 
 function socket_close()
 {
@@ -25,6 +55,9 @@ function socket_close()
 
     clearInterval(input_loop);
     clearInterval(output_loop);
+
+    $("#login-form").removeClass("loading");
+    $("#login-container").removeClass("hidden");
 }
 
 function socket_open()
@@ -48,6 +81,8 @@ function socket_open()
         else
             socket_close();
     }, 5);
+
+    $("#login-container").addClass("hidden");
 }
 
 function send_message(message, type, conversation = undefined)
@@ -77,15 +112,51 @@ async function process_message(message)
     console.log(message);
 }
 
-$("#conn-start").click(function()
+
+
+$('#login-string').on('input change paste keyup', function()
 {
-    if (socket === undefined)
+    let input = $('#login-string').val().trim();
+    let target = decode_connection_string(input);
+
+    if (target !== undefined)
     {
-        incoming_queue = new Array();
-        outgoing_queue = new Array();
-        socket = new WebSocket(`ws://${$('#conn-target').val()}`);
-        socket.onclose = socket_close;
-        socket.onopen = socket_open;
-        socket.onmessage = (e) => incoming_queue.push(JSON.parse(e.data));
+        $('#login-start').removeClass('hidden');
+        $('#login-hint').addClass('hidden');
+    }
+    else
+    {
+        $('#login-start').addClass('hidden');
+
+        if (input.length > 0)
+            $('#login-hint').removeClass('hidden');
     }
 });
+
+$('#login-string').keypress(function(e){
+    if (e.keyCode == 13)
+        $('#login-start').click();
+});
+
+$('#login-start').click(function()
+{
+    let target = decode_connection_string($('#login-string').val());
+
+    if (socket === undefined && target !== undefined)
+    {
+        $('#login-form').addClass('loading');
+
+        setTimeout(function()
+        {
+            incoming_queue = new Array();
+            outgoing_queue = new Array();
+            socket = new WebSocket(`ws://${target}`);
+            socket.onclose = socket_close;
+            socket.onopen = socket_open;
+            socket.onmessage = e => incoming_queue.push(JSON.parse(e.data));
+            socket.onerror = socket_error;
+        }, 350);
+    }
+});
+
+$('#login-failed-dismiss').click(() => $("#login-form").removeClass("failed"));

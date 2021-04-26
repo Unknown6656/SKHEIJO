@@ -4,14 +4,68 @@
         <meta charset="utf-8"/>
         <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
         <meta http-equiv="X-UA-Compatible" content="chrome=1">
-        <title></title>
+        <title>SKHEIJO</title>
+        <!-- <meta name="viewport" content="width=device-width, initial-scale=1"> -->
+        <meta name="viewport" content="width=800, user-scalable=yes">
         <link rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
         <link rel="icon" type="image/x-icon" href="favicon.ico"/>
         <link rel="stylesheet" type="text/css" href="css/style.css"/>
     </head>
     <body>
-        <input type="text" id="conn-target" value="127.0.0.1:14499"/>
-        <button id="conn-start">go</button>
+        <div id="main-container">
+            <div id="login-container">
+                <div id="login-form">
+                    <div id="login-loading">
+                        <span>Connecting ...</span>
+                    </div>
+                    <div id="login-failed">
+                        <span>
+                            <h1>Connection failed</h1>
+                            <p>
+                                The connection code seems to be invalid or the game server could not be contacted.
+                                Please verify that you entered the code correctly and that your internet connection is stable.
+                            </p>
+                            <p>
+                                Consider contacting the person who gave you the connection code should this error persist over multiple retries.
+                                The reason could be that the game server is experiencing some down times.
+                                Furhtermore, the game server needs to be accessible to the wider internet.
+                                A connection failure may indicate that the server is inacessible due to firewall restrictions.
+                            </p>
+                            <button id="login-failed-dismiss">Dismiss message</button>
+                        </span>
+                    </div>
+                    <h1>Welcome to SKHEIJO!</h1>
+                    <p>
+                        SKHEIJO is a digital adaptation of the German board game <a href="https://www.magilano.com/produkt/skyjo" target="_blank">SKYJO</a>.
+                    </p>
+                    <br/>
+                    <p>
+                        You need a connection code to join a game.
+                        Enter the code into the box below.
+                        The connection code uniquely identifies a game server and is usually represented as a sequence of seemingly random characters such as 'MTI3LjAuMC4xJDE0NDg4JDE0NDk5'.
+                    </p>
+                    <input type="text" id="login-string" placeholder="Enter the connection code here."/>
+                    <p>
+                        <table width="100%">
+                            <tr width="100%">
+                                <td>
+                                    <span id="login-hint" class="hidden">
+                                        The code does not seem to be of the correct format.
+                                    </span>
+                                </td>
+                                <td>
+                                    <button id="login-start" class="hidden">Connect ...</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </p>
+                </div>
+            </div>
+            <div id="game-container">
+            </div>
+        </div>
+
+
 
         <script type="text/javascript" language="javascript" src="js/jquery.js"></script>
         <script type="text/javascript" language="javascript" src="js/guid.js"></script>
