@@ -1,6 +1,4 @@
-﻿using System.Threading.Tasks;
-using System.Threading;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using System;
 
@@ -8,24 +6,17 @@ using Unknown6656.Common;
 
 namespace SKHEIJO
 {
-    public sealed class App
-        : Application
+    public static class Program
     {
-        public string[] Arguments { get; }
-
-
-        static App() => Logger.Start();
-
-        public App(string[] argv) => Arguments = argv;
-
-        public static async Task<int> Main(string[] argv)
+        [STAThread]
+        public static int Main(string[] argv)
         {
             Logger.Start();
 
             $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log(LogSource.UI);
 
-            Configuration configuration = Configuration.TryReadConfig(new("user.dat")) ?? Configuration.TryReadConfig(new("default.dat")) ?? Configuration.Default;
             int ret = -1;
+            Configuration configuration = Configuration.TryReadConfig(new("user.dat")) ?? Configuration.TryReadConfig(new("default.dat")) ?? Configuration.Default;
 
             if (configuration.Client is null)
                 configuration = configuration with
@@ -39,23 +30,11 @@ namespace SKHEIJO
 
                 do
                 {
-                    $"Starting {nameof(ConnectWindow)} STA thread...".Log(LogSource.UI);
+                    $"Starting {nameof(ConnectWindow)} ...".Log(LogSource.UI);
 
-                    Thread thread = new(() =>
-                    {
-                        App app = new(argv);
-                        ConnectWindow window = new(interop);
+                    ConnectWindow window = new(interop);
 
-                        ret = app.Run(window);
-                    });
-
-                    thread.SetApartmentState(ApartmentState.STA);
-                    thread.Start();
-
-                    $"{nameof(ConnectWindow)} STA thread started.".Log(LogSource.UI);
-
-                    thread.Join();
-
+                    window.ShowDialog();
                     configuration = interop.Configuration;
 
                     if (!interop.DialogResult)
@@ -74,22 +53,11 @@ namespace SKHEIJO
 
                 if (interop.GameClient is { } g)
                 {
-                    $"Starting {nameof(GameWindow)} STA thread...".Log(LogSource.UI);
+                    $"Starting {nameof(GameWindow)} ...".Log(LogSource.UI);
 
-                    Thread thread = new(() =>
-                    {
-                        App app = new(argv);
-                        GameWindow window = new(interop.GameClient);
+                    GameWindow window = new(g);
 
-                        ret = app.Run(window);
-                    });
-
-                    thread.SetApartmentState(ApartmentState.STA);
-                    thread.Start();
-
-                    $"{nameof(GameWindow)} STA thread started.".Log(LogSource.UI);
-
-                    thread.Join();
+                    window.ShowDialog();
                 }
             }
             catch (Exception ex)
@@ -102,49 +70,9 @@ namespace SKHEIJO
                 configuration.WriteConfig(new("user.dat"));
             }
 
-            await Logger.Stop();
+            Logger.Stop().GetAwaiter().GetResult();
 
             return ret;
         }
-
-        protected override void OnStartup(StartupEventArgs e)
-        {
-            $"Application started.".Log(LogSource.UI);
-
-            base.OnStartup(e);
-        }
-
-        protected override void OnExit(ExitEventArgs e)
-        {
-            $"Application exiting with {e.ApplicationExitCode}".Log(LogSource.UI);
-
-            base.OnExit(e);
-        }
     }
 }
-
-
-
-//string? s;
-//
-//do
-//    s = Console.ReadLine();
-//while (s is null);
-//
-//using GameClient client = new(Guid.NewGuid(), s);
-//
-//Console.WriteLine("type 'q' to exit");
-//
-//while (true)
-//{
-//    string line = Console.ReadLine() ?? "";
-//
-//    if (line == "q")
-//        break;
-//    else
-//        From.Bytes(await client.SendMessageAndWaitForReply(From.String(line))).ToString().Log();
-//}
-//
-//client.Dispose();
-
-
