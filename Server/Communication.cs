@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -119,9 +120,20 @@ namespace SKHEIJO
         public static implicit operator ConnectionString(string s) => FromString(s);
     }
 
-    public interface ICommunicationData { }
+    public abstract record CommunicationData
+    {
+        internal static Dictionary<string, Type> KnownDerivativeTypes { get; }
+        
+        static CommunicationData()
+        {
+            KnownDerivativeTypes = Assembly.GetExecutingAssembly()
+                                           .GetTypes()
+                                           .Where(t => t.IsAssignableTo(typeof(CommunicationData)) && t != typeof(CommunicationData))
+                                           .ToDictionary(t => t.Name, LINQ.id);
+        }
+    }
 
-    public record Communication_ServerInformation(string ServerName) : ICommunicationData;
+    public record CommunicationData_ServerInformation(string ServerName) : CommunicationData;
 
 
 
@@ -129,51 +141,63 @@ namespace SKHEIJO
 
     public readonly struct RawCommunicationPacket
     {
-        private record internal_data(string Type, string? FullType, Guid Conversation, ICommunicationData Data);
+        private record internal_data(string Type, string? FullType, Guid Conversation, object Data);
+
+        public static Encoding Encoding { get; } = Encoding.UTF8;
 
         public readonly Guid ConversationIdentifier;
-        public readonly byte[] MessageBytes;
+        public readonly Union<byte[], string> Message;
 
 
-        public RawCommunicationPacket(Guid conversation, byte[] bytes)
+        public RawCommunicationPacket(Guid conversation, Union<byte[], string> message)
         {
             ConversationIdentifier = conversation;
-            MessageBytes = bytes;
+            Message = message;
         }
 
-        public override string ToString() => $"{ConversationIdentifier}: {MessageBytes.Length} Bytes";
+        public override string ToString() => $"{ConversationIdentifier}: {Message.Match(b => $"{b.Length} bytes", s => $"{s.Length} UTF-8 chars")}";
 
         public void WriteTo(BinaryWriter writer)
         {
-            bool compressed = MessageBytes.Length > 128;
+            byte[] bytes = Message.Match(LINQ.id, Encoding.GetBytes);
+            bool compressed = bytes.Length > 128;
 
             writer.WriteNative(ConversationIdentifier);
             writer.WriteNative(compressed);
-            writer.WriteCollection(compressed ? MessageBytes.Compress(CompressionFunction.GZip) : MessageBytes);
+            writer.WriteCollection(compressed ? bytes.Compress(CompressionFunction.GZip) : bytes);
         }
 
-        public ICommunicationData? DeserializeData()
+        public CommunicationData? DeserializeData() => DeserializeData(Message)?.data;
+
+        internal static (CommunicationData? data, Guid guid)? DeserializeData(Union<byte[], string> message)
         {
-            string json = Encoding.UTF8.GetString(MessageBytes);
-
-            if (JsonSerializer.Deserialize<internal_data>(json) is internal_data data)
+            try
             {
-                Type? type = Type.GetType(data.FullType ?? data.Type);
+                if (JsonSerializer.Deserialize<internal_data>(message.Match(Encoding.GetString, LINQ.id)) is internal_data { Type: string } data)
+                {
+                    if (!CommunicationData.KnownDerivativeTypes.TryGetValue(data.Type, out Type? type))
+                        type = Type.GetType(data.FullType ?? data.Type);
 
-                // TODO
+                    string inner_json = data.Data.ToString();
 
-                return data.Data;
+                    if (type is { } && JsonSerializer.Deserialize(inner_json, type) is CommunicationData comm)
+                        return (comm, data.Conversation);
+                }
             }
-            else
-                return null;
+            catch (Exception ex)
+            {
+                ex.Err(LogSource.Unknown);
+            }
+            
+            return null;
         }
 
-        public static RawCommunicationPacket SerializeData(Guid conversation, ICommunicationData data)
+        public static RawCommunicationPacket SerializeData(Guid conversation, CommunicationData data)
         {
             Type type = data.GetType();
             string json = JsonSerializer.Serialize(new internal_data(type.Name, type.AssemblyQualifiedName, conversation, data));
 
-            return new(conversation, Encoding.UTF8.GetBytes(json));
+            return new(conversation, json);
         }
 
         public static RawCommunicationPacket ReadFrom(BinaryReader reader)
@@ -189,7 +213,7 @@ namespace SKHEIJO
         }
     }
 
-    public delegate ICommunicationData? IncomingDataDelegate(Player player, ICommunicationData? message, bool reply_requested);
+    public delegate CommunicationData? IncomingDataDelegate(Player player, CommunicationData? message, bool reply_requested);
 
     public sealed class GameServer
         : IDisposable
@@ -391,11 +415,11 @@ namespace SKHEIJO
                 };
 
                 AddPlayer(player);
-                Notify(player, new Communication_ServerInformation(ServerName));
+                Notify(player, new CommunicationData_ServerInformation(ServerName));
 
                 socket.OnClose = () => RemovePlayer(player);
                 socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);
-                socket.OnMessage = message => OnWebsocketMessage(socket, player, Encoding.UTF8.GetBytes(message));
+                socket.OnMessage = message => OnWebsocketMessage(socket, player, message);
 
                 while (_running != 0 && socket.IsAvailable)
                     await Task.Delay(20);
@@ -415,8 +439,8 @@ namespace SKHEIJO
                     {
                         any = true;
 
-                        ICommunicationData? message = item.Item2.DeserializeData();
-                        ICommunicationData? reply = OnIncomingData?.Invoke(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
+                        CommunicationData? message = item.Item2.DeserializeData();
+                        CommunicationData? reply = OnIncomingData?.Invoke(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
 
                         if (reply is { } && _players.TryGetValue(item.Item1, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
                             outgoing.Enqueue(RawCommunicationPacket.SerializeData(item.Item2.ConversationIdentifier, reply));
@@ -431,16 +455,15 @@ namespace SKHEIJO
             }
         }
 
-        private void OnWebsocketMessage(WebSocketConnection socket, Player player, byte[] message)
+        private void OnWebsocketMessage(WebSocketConnection socket, Player player, Union<byte[], string> message)
         {
-            $"Received {message.Length} bytes from '{player}'.".Log(LogSource.WebServer);
-
-            From.Bytes(message).HexDump();
-
-
+            if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
+                _incoming.Enqueue((player, new(guid, message)));
+            else
+                $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
         }
 
-        public bool Notify(Player player, ICommunicationData data)
+        public bool Notify(Player player, CommunicationData data)
         {
             bool res;
 
@@ -450,9 +473,9 @@ namespace SKHEIJO
             return res;
         }
 
-        public void Notify(IEnumerable<Player> players, ICommunicationData data) => players.Do(p => Notify(p, data));
+        public void Notify(IEnumerable<Player> players, CommunicationData data) => players.Do(p => Notify(p, data));
 
-        public void NotifyAll(ICommunicationData data) => Notify(_players.Keys, data);
+        public void NotifyAll(CommunicationData data) => Notify(_players.Keys, data);
 
         public static GameServer CreateLocalGameServer(string addr, ushort port_csharp, ushort port_web, string name) => new(new(addr, port_csharp, port_web), name);
 
@@ -476,7 +499,7 @@ namespace SKHEIJO
         private readonly ConcurrentQueue<RawCommunicationPacket> _incoming;
 
 
-        public event Action<ICommunicationData?>? OnIncomingData;
+        public event Action<CommunicationData?>? OnIncomingData;
 
 
         public GameClient(Guid uuid, ConnectionString connection_string)
@@ -555,9 +578,9 @@ namespace SKHEIJO
                 Dispose();
         }
 
-        public void SendMessage(ICommunicationData data) => _outgoing.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
+        public void SendMessage(CommunicationData data) => _outgoing.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
 
-        public async Task<ICommunicationData?> SendMessageAndWaitForReply(ICommunicationData data)
+        public async Task<CommunicationData?> SendMessageAndWaitForReply(CommunicationData data)
         {
             RawCommunicationPacket? reply = null;
             Guid guid = Guid.NewGuid();

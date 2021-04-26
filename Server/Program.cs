@@ -22,17 +22,26 @@ namespace Server
             using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488, 14499, "lol kay");
 
             Console.WriteLine(server.ConnectionString);
-            Console.WriteLine("\npress ESC to exit.");
+            Console.WriteLine("\ntype 'q' to exit.");
 
-            server.OnIncomingData += (p, m, r) => From.String(From.Bytes(m).ToHexString());
+            server.OnIncomingData += (p, o, r) =>
+            {
+                o.Log(LogSource.Server);
+
+                return o;
+            };
             server.Start();
 
             while (server.IsRunning)
             {
+                string cmd;
+
                 do
-                    while (!Console.KeyAvailable)
-                        await Task.Delay(20);
-                while (Console.ReadKey(true).Key != ConsoleKey.Escape);
+                {
+                    cmd = Console.ReadLine() ?? "";
+                    server.NotifyAll(new CommunicationData_ServerInformation(cmd));
+                }
+                while (cmd != "q");
 
                 server.Stop();
             }
