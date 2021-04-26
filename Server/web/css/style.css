@@ -1,5 +1,4 @@
 @charset "UTF-8";
-@import '../font/harrypotter.css';
 @import '../font/bahnschrift.css';
 
 
@@ -7,10 +6,26 @@
     --font-main: 'Bahnschrift', 'Helvetica', 'Arial', 'Lucida Grande', sans-serif;
     --font-mono: 'Consolas', 'Courier New', 'Courier', 'Lucida Console', 'Ubuntu Mono', monospace;
     --color-fg: black;
-    --color-bg: lightgray;
+    --color-bg: white;
+    --color-control-bg: lightgray;
+    --font-size: 12pt;
     /* --color-links: #4fb9be; */
     --color-links: #003289;
     /* --blur-radius: 20px; */
+
+    background-color: var(--color-bg);
+    font-family: var(--font-main);
+    font-size: var(--font-size);
+    color: var(--color-fg);
 }
 
-
+input,
+button,
+textarea {
+    border-radius: 0px;
+    border: 1px solid var(--color-fg);
+    background-color: var(--color-control-bg);
+    font-family: var(--font-main);
+    font-size: var(--font-size);
+    color: var(--color-fg);
+}
