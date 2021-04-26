@@ -46,7 +46,7 @@ namespace SKHEIJO
                     mail = $"{(is_mail ? "mailto" : "https")}://{mail}";
                 }
 
-                tbl_contact.Inlines.Add(new Hyperlink(new Run(mail))
+                tbl_contact.Inlines.Add(new Hyperlink(new Run(Interop.Configuration.Author.Email))
                 {
                     NavigateUri = new(mail)
                 });
