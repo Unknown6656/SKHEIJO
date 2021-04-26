@@ -2,10 +2,12 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,11 +38,11 @@ namespace SKHEIJO
         public override string ToString()
         {
             string remote = Client?.Match(
-                tcp => tcp.Client?.RemoteEndPoint is IPEndPoint ep ? ep.ToString() : "tcp not connected",
-                web => $"{web.ConnectionInfo.ClientIpAddress}:{web.ConnectionInfo.ClientPort} / {web.ConnectionInfo.Host}"
+                tcp => tcp.Client?.RemoteEndPoint is IPEndPoint ep ? $"(tcp) {ep}" : "tcp not connected",
+                web => $"(web) {web.ConnectionInfo.ClientIpAddress}:{web.ConnectionInfo.ClientPort}"
             ) ?? "not connected";
 
-            return $"{UUID} : {remote}";
+            return $"{UUID} {remote}";
         }
     }
 
@@ -128,8 +130,18 @@ namespace SKHEIJO
         public static implicit operator ConnectionString(string s) => FromString(s);
     }
 
+    public interface ICommunicationData { }
+
+
+
+
+
+
+
     public readonly struct RawCommunicationPacket
     {
+        private record internal_data(string Type, string? FullType, Guid Conversation, ICommunicationData Data);
+
         public readonly Guid ConversationIdentifier;
         public readonly byte[] MessageBytes;
 
@@ -151,6 +163,30 @@ namespace SKHEIJO
             writer.WriteCollection(compressed ? MessageBytes.Compress(CompressionFunction.GZip) : MessageBytes);
         }
 
+        public ICommunicationData? DeserializeData()
+        {
+            string json = Encoding.UTF8.GetString(MessageBytes);
+
+            if (JsonSerializer.Deserialize<internal_data>(json) is internal_data data)
+            {
+                Type type = Type.GetType(data.FullType ?? data.Type);
+
+                // TODO
+
+                return data.Data;
+            }
+            else
+                return null;
+        }
+
+        public static RawCommunicationPacket SerializeData(Guid conversation, ICommunicationData data)
+        {
+            Type type = data.GetType();
+            string json = JsonSerializer.Serialize(new internal_data(type.Name, type.AssemblyQualifiedName, conversation, data));
+
+            return new(conversation, Encoding.UTF8.GetBytes(json));
+        }
+
         public static RawCommunicationPacket ReadFrom(BinaryReader reader)
         {
             Guid conversation_id = reader.ReadNative<Guid>();
@@ -164,7 +200,7 @@ namespace SKHEIJO
         }
     }
 
-    public delegate byte[]? IncomingDataDelegate(Player player, byte[] message, bool reply_requested);
+    public delegate ICommunicationData? IncomingDataDelegate(Player player, ICommunicationData? message, bool reply_requested);
 
     public sealed class GameServer
         : IDisposable
@@ -219,33 +255,34 @@ namespace SKHEIJO
                         else
                             await Task.Delay(5);
                 });
-                Task.Factory.StartNew(async delegate
-                {
-                    while (_running != 0)
-                    {
-                        bool any = false;
-
-                        while (_incoming.TryDequeue(out var item))
-                            try
-                            {
-                                any = true;
-
-                                byte[]? reply = OnIncomingData?.Invoke(item.Item1, item.Item2.MessageBytes, item.Item2.ConversationIdentifier != Guid.Empty);
-
-                                if (reply is { } && _players.TryGetValue(item.Item1, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
-                                    outgoing.Enqueue(new(item.Item2.ConversationIdentifier, reply));
-                            }
-                            catch (Exception ex)
-                            {
-                                ex.Warn(LogSource.Server);
-                            }
-
-                        if (!any)
-                            await Task.Delay(1);
-                    }
-                });
+                Task.Factory.StartNew(ProcessIncomingMessages);
             }
         }
+
+        public void Stop()
+        {
+            if (Interlocked.Exchange(ref _running, 0) != 0)
+            {
+                TCPListener.Stop();
+
+                foreach ((Player player, ConcurrentQueue<RawCommunicationPacket> outgoing) in _players)
+                {
+                    outgoing.Clear();
+                    player.Client?.Match(
+                        tcp =>
+                        {
+                            tcp.Close();
+                            tcp.Dispose();
+                        },
+                        web => web.Close()
+                    );
+                }
+
+                _players.Clear();
+            }
+        }
+
+        public void Dispose() => Stop();
 
         private ConcurrentQueue<RawCommunicationPacket> AddPlayer(Player player)
         {
@@ -343,71 +380,90 @@ namespace SKHEIJO
 
         private async void OnWebConnectionOpened(WebSocketConnection socket)
         {
-            Player player = new(socket.ConnectionInfo.Id)
+            Guid? guid = null;
+
+            socket.OnBinary = bytes =>
             {
-                Client = socket
+                unsafe
+                {
+                    if (bytes.Length >= sizeof(Guid))
+                        guid = Guid.ParseExact(From.Bytes(bytes).ToHexString(), "N");
+                }
             };
 
-            socket.OnOpen = () => AddPlayer(player);
-            socket.OnClose = () => RemovePlayer(player);
-            socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);
-            socket.OnMessage = message => OnWebsocketMessage(socket, player, From.String(message, Encoding.UTF8).ToBytes());
-
-            while (_running != 0 && socket.IsAvailable)
+            while (_running != 0 && socket.IsAvailable && guid is null)
                 await Task.Delay(20);
 
+            if (guid.HasValue)
+            {
+                Player player = new(guid.Value)
+                {
+                    Client = socket
+                };
+
+                AddPlayer(player);
+                Notify(player, );
+
+                socket.OnClose = () => RemovePlayer(player);
+                socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);
+                socket.OnMessage = message => OnWebsocketMessage(socket, player, Encoding.UTF8.GetBytes(message));
+
+                while (_running != 0 && socket.IsAvailable)
+                    await Task.Delay(20);
+            }
+
             socket.Close();
+        }
+
+        private async Task ProcessIncomingMessages()
+        {
+            while (_running != 0)
+            {
+                bool any = false;
+
+                while (_incoming.TryDequeue(out var item))
+                    try
+                    {
+                        any = true;
+
+                        ICommunicationData? message = item.Item2.DeserializeData();
+                        ICommunicationData? reply = OnIncomingData?.Invoke(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
+
+                        if (reply is { } && _players.TryGetValue(item.Item1, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
+                            outgoing.Enqueue(RawCommunicationPacket.SerializeData(item.Item2.ConversationIdentifier, reply));
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Warn(LogSource.Server);
+                    }
+
+                if (!any)
+                    await Task.Delay(1);
+            }
         }
 
         private void OnWebsocketMessage(WebSocketConnection socket, Player player, byte[] message)
         {
             $"Received {message.Length} bytes from '{player}'.".Log(LogSource.WebServer);
 
-
+            From.Bytes(message).HexDump();
 
 
         }
 
-        public void Stop()
+        public bool Notify(Player player, ICommunicationData data)
         {
-            if (Interlocked.Exchange(ref _running, 0) != 0)
-            {
-                TCPListener.Stop();
+            bool res;
 
-                foreach ((Player player, ConcurrentQueue<RawCommunicationPacket> outgoing) in _players)
-                {
-                    outgoing.Clear();
-                    player.Client?.Match(
-                        tcp =>
-                        {
-                            tcp.Close();
-                            tcp.Dispose();
-                        },
-                        web => web.Close()
-                    );
-                }
+            if (res = _players.TryGetValue(player, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
+                outgoing?.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
 
-                _players.Clear();
-            }
+            return res;
         }
 
-        public void Dispose() => Stop();
+        public void Notify(IEnumerable<Player> players, ICommunicationData data) => players.Do(p => Notify(p, data));
 
-        public void NotifyAll(byte[] data) => Notify(_players.Keys, data);
-
-        public void Notify(IEnumerable<Player> players, byte[] data) => players.Do(p => Notify(p, data));
-
-        public bool Notify(Player player, byte[] data)
-        {
-            if (_players.TryGetValue(player, out ConcurrentQueue<RawCommunicationPacket>? outgoing))
-            {
-                outgoing.Enqueue(new(Guid.Empty, data));
-
-                return true;
-            }
-            else
-                return false;
-        }
+        public void NotifyAll(ICommunicationData data) => Notify(_players.Keys, data);
 
         public static GameServer CreateLocalGameServer(string addr, ushort port_csharp, ushort port_web, string name) => new(new(addr, port_csharp, port_web), name);
 
@@ -431,7 +487,7 @@ namespace SKHEIJO
         private readonly ConcurrentQueue<RawCommunicationPacket> _incoming;
 
 
-        public event Action<byte[]>? OnIncomingData;
+        public event Action<ICommunicationData?>? OnIncomingData;
 
 
         public GameClient(Guid uuid, ConnectionString connection_string)
@@ -510,20 +566,20 @@ namespace SKHEIJO
                 Dispose();
         }
 
-        public void SendMessage(byte[] data) => _outgoing.Enqueue(new(Guid.Empty, data));
+        public void SendMessage(ICommunicationData data) => _outgoing.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
 
-        public async Task<byte[]> SendMessageAndWaitForReply(byte[] data)
+        public async Task<ICommunicationData?> SendMessageAndWaitForReply(ICommunicationData data)
         {
-            RawCommunicationPacket packet = new(Guid.NewGuid(), data);
             RawCommunicationPacket? reply = null;
+            Guid guid = Guid.NewGuid();
 
-            _outgoing.Enqueue(packet);
+            _outgoing.Enqueue(RawCommunicationPacket.SerializeData(guid, data));
 
             while (reply is null)
-                while (!_open_conversations.TryGetValue(packet.ConversationIdentifier, out reply))
-                    await Task.Yield();
+                while (!_open_conversations.TryGetValue(guid, out reply))
+                    await Task.Delay(1);
 
-            return reply.Value.MessageBytes;
+            return reply.Value.DeserializeData();
         }
 
         private async Task IncomingHandler()
@@ -535,7 +591,7 @@ namespace SKHEIJO
                 while (_incoming.TryDequeue(out RawCommunicationPacket data))
                 {
                     idle = false;
-                    OnIncomingData?.Invoke(data.MessageBytes);
+                    OnIncomingData?.Invoke(data.DeserializeData());
                 }
 
                 if (idle)
