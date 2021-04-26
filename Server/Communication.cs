@@ -17,7 +17,6 @@ using Fleck;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
-using System.Numerics;
 
 namespace SKHEIJO
 {
@@ -47,8 +46,6 @@ namespace SKHEIJO
 
     public sealed class ConnectionString
     {
-        private const string SCRAMBLER = "Vxawrn2v/IF4E+bYO5ueLd9y3WsCARmTXDpNKGBZhtkcPM=0zjQfoU7S6qJH1gi8l";
-
         public (ushort CSharp, ushort Web) Ports { get; }
         public IPAddress Address { get; }
         public bool IsIPv6 { get; }
@@ -78,23 +75,22 @@ namespace SKHEIJO
             IsIPv6 = address.AddressFamily is AddressFamily.InterNetworkV6;
         }
 
-        public override string ToString()
-        {
-            char[] b64 = From.ArrayOfSources(
-                From.Unmanaged(IsIPv6),
-                From.String(Address.ToString()),
-                From.Unmanaged(Ports)
-            ).ToBase64().ToCharArray();
-
-            for (int i = 0; i < b64.Length; ++i)
-                b64[i] = SCRAMBLER[(SCRAMBLER.IndexOf(b64[i]) + i) % SCRAMBLER.Length];
-
-            return new string(b64);
-        }
-
         public override int GetHashCode() => ToString().GetHashCode();
 
         public override bool Equals(object? obj) => obj is ConnectionString cs && cs.ToString() == ToString();
+
+        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.Web}").ToBase64();
+
+        public static ConnectionString FromString(string connection_string)
+        {
+            string[] parts = From.Base64(connection_string).ToString().Split('$');
+
+            return new(
+                IPAddress.Parse(parts[0]),
+                ushort.Parse(parts[1]),
+                ushort.Parse(parts[2])
+            );
+        }
 
         public static async Task<ConnectionString> GetMyConnectionString(ushort port_csharp, ushort port_web) =>
             await GetMyConnectionString((port_csharp, port_web));
@@ -108,26 +104,12 @@ namespace SKHEIJO
             return new(ip, ports);
         }
 
-        public static ConnectionString FromString(string connection_string)
-        {
-            char[] input = connection_string.ToCharArray();
-            int len = SCRAMBLER.Length;
-
-            for (int i = 0; i < input.Length; ++i)
-                input[i] = SCRAMBLER[((SCRAMBLER.IndexOf(input[i]) - i) % len + len) % len];
-
-            From[] parts = From.Base64(new(input)).ToArrayOfSources();
-
-            return new(
-                IPAddress.Parse(parts[1].ToString()),
-                parts[2].ToUnmanaged<(ushort, ushort)>()
-            );
-        }
-
         public static implicit operator string(ConnectionString c) => c.ToString();
 
         public static implicit operator ConnectionString(string s) => FromString(s);
     }
+
+
 
     public abstract record CommunicationData
     {
@@ -144,7 +126,7 @@ namespace SKHEIJO
 
     public record CommunicationData_ServerInformation(string ServerName) : CommunicationData;
 
-
+    // TODO
 
 
 
@@ -331,7 +313,7 @@ namespace SKHEIJO
 
             try
             {
-                $"Incoming connection from {client.Client.RemoteEndPoint}.".Log(LogSource.Server);
+                $"Incoming connection from {client.Client?.RemoteEndPoint}.".Log(LogSource.Server);
 
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new(stream))
@@ -344,8 +326,8 @@ namespace SKHEIJO
 
                     ArraySegment<byte> keepalive_buffer = new byte[1];
 
-                    while (_running != 0)
-                        if (client.Client.Poll(0, SelectMode.SelectRead) && await client.Client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0)
+                    while (_running != 0 && client.Client is { } socket)
+                        if (socket.Poll(0, SelectMode.SelectRead) && await socket.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0)
                         {
                             $"Connection to {player} lost.".Err(LogSource.Server);
 
