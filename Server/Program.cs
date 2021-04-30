@@ -19,9 +19,15 @@ namespace Server
 
 
             // using GameServer server = await GameServer.CreateGameServer(14488, 14499, "lol kay");
-            using GameServer server = GameServer.CreateLocalGameServer("127.0.0.1", 14488, 14499, "lol kay");
+            using GameServer server = GameServer.CreateLocalGameServer("192.168.0.26", 14488, 14499, "lol kay");
+            
+            Console.WriteLine($@"
+--------------------------------------------
+    INIVATION LINK:
 
-            Console.WriteLine(server.ConnectionString);
+    {server.ConnectionString}
+--------------------------------------------
+");
             Console.WriteLine("\ntype 'q' to exit.");
 
             server.OnIncomingData += (p, o, r) =>

@@ -272,7 +272,9 @@ namespace SKHEIJO
 
                 foreach ((Player player, Union<BinaryWriter, WebSocketConnection> connection) in _players)
                 {
-                    connection.AsCase0?.Dispose();
+                    if (connection.Is(out BinaryWriter? writer))
+                        writer?.Dispose();
+
                     player.Client?.Match(
                         tcp =>
                         {
@@ -536,46 +538,47 @@ namespace SKHEIJO
         private async Task CommunicationHandler()
         {
             ArraySegment<byte> keepalive_buffer = new byte[1];
-            Socket? client = Player.Client?.AsCase0?.Client;
+            TcpClient? tcp_client = null;
 
-            while (IsAlive)
-                if (client is null || (client.Poll(0, SelectMode.SelectRead) && await client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0))
-                {
-                    "Connection to server lost.".Err(LogSource.Client);
-
-                    break;
-                }
-                else
-                {
-                    bool idle = true;
-
-                    while (_outgoing.TryDequeue(out RawCommunicationPacket packet))
+            if ((Player.Client?.Is(out tcp_client) ?? false) && tcp_client?.Client is Socket client)
+                while (IsAlive)
+                    if (tcp_client?.Client is null || (client.Poll(0, SelectMode.SelectRead) && await client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0))
                     {
-                        idle = false;
-                        packet.WriteTo(Writer);
+                        "Connection to server lost.".Err(LogSource.Client);
 
-                        if (packet.ConversationIdentifier != Guid.Empty)
-                            _open_conversations[packet.ConversationIdentifier] = null;
-
-                        $"{packet} sent to server.".Log(LogSource.Client);
+                        break;
                     }
-
-                    while (Stream.DataAvailable)
+                    else
                     {
-                        RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(Reader);
-                        idle = false;
+                        bool idle = true;
 
-                        $"{packet} received from server.".Log(LogSource.Client);
+                        while (_outgoing.TryDequeue(out RawCommunicationPacket packet))
+                        {
+                            idle = false;
+                            packet.WriteTo(Writer);
 
-                        if (packet.ConversationIdentifier != Guid.Empty && _open_conversations.ContainsKey(packet.ConversationIdentifier))
-                            _open_conversations[packet.ConversationIdentifier] = packet;
-                        else
-                            _incoming.Enqueue(packet);
+                            if (packet.ConversationIdentifier != Guid.Empty)
+                                _open_conversations[packet.ConversationIdentifier] = null;
+
+                            $"{packet} sent to server.".Log(LogSource.Client);
+                        }
+
+                        while (Stream.DataAvailable)
+                        {
+                            RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(Reader);
+                            idle = false;
+
+                            $"{packet} received from server.".Log(LogSource.Client);
+
+                            if (packet.ConversationIdentifier != Guid.Empty && _open_conversations.ContainsKey(packet.ConversationIdentifier))
+                                _open_conversations[packet.ConversationIdentifier] = packet;
+                            else
+                                _incoming.Enqueue(packet);
+                        }
+
+                        if (idle)
+                            await Task.Yield();
                     }
-
-                    if (idle)
-                        await Task.Yield();
-                }
 
             if (IsAlive)
                 Dispose();
@@ -625,7 +628,9 @@ namespace SKHEIJO
             Stream.Close();
             Stream.Dispose();
 
-            if (Player.Client?.AsCase0?.Client is Socket client)
+            TcpClient? client = null;
+
+            if (Player.Client?.Is(out client) ?? false)
             {
                 client.Close();
                 client.Dispose();
