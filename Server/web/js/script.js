@@ -36,7 +36,7 @@ function socket_error()
 {
     if (socket !== undefined && socket.readyState != WebSocket.OPEN)
     {
-        $("#login-form").addClass("failed");
+        $('#login-form').addClass('failed');
 
         socket_close();
     }
@@ -56,8 +56,11 @@ function socket_close()
     clearInterval(input_loop);
     clearInterval(output_loop);
 
-    $("#login-form").removeClass("loading");
-    $("#login-container").removeClass("hidden");
+    window.onbeforeunload = null;
+
+    $('#login-form').removeClass('loading');
+    $('#login-container').removeClass('hidden');
+    $('html,body').removeClass('scrollable');
 }
 
 function socket_open()
@@ -82,7 +85,11 @@ function socket_open()
             socket_close();
     }, 5);
 
-    $("#login-container").addClass("hidden");
+    window.onbeforeunload = () => 'Are you sure that you want to leave the game server?\n' +
+                                'You will be logged out from the current game.';
+
+    $('#login-container').addClass('hidden');
+    $('html,body').addClass('scrollable');
 }
 
 function send_message(message, type, conversation = undefined)
@@ -160,3 +167,4 @@ $('#login-start').click(function()
 });
 
 $('#login-failed-dismiss').click(() => $("#login-form").removeClass("failed"));
+
