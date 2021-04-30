@@ -56,12 +56,17 @@ a {
 
 
 html {
-    overflow: hidden;
+    /* overflow: hidden; */
     height: 100%;
 }
 
 body {
+    overflow: hidden;
     min-height: 100%;
+}
+
+body.scrollable {
+    overflow: scroll;
 }
 
 #main-container {
@@ -78,11 +83,26 @@ body {
     top: 0px;
 }
 
+body.scrollable #main-container {
+    position: absolute;
+}
+
 #login-container {
     justify-content: center;
     align-items: center;
     display: flex;
+}
+
+#login-container,
+#game-container {
+    position: absolute;
     height: 100%;
+    width: 100%;
+    margin: 0px;
+    bottom: 0px;
+    right: 0px;
+    left: 0px;
+    top: 0px;
 }
 
 #login-form {
@@ -164,8 +184,19 @@ body {
     color: firebrick;
 }
 
+#login-container.hidden ~ #game-container {
+    pointer-events: all;
+    position: absolute;
+    height: unset;
+    bottom: unset;
+    opacity: 1;
+}
+
 #game-container {
-    background-color: cyan;
+    pointer-events: none;
+    opacity: 0;
+
+    background-color: green;
 }
 
 
