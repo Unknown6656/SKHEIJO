@@ -2,6 +2,7 @@
 using System;
 
 using Unknown6656.Common;
+using System.Windows;
 
 namespace SKHEIJO
 {
@@ -39,7 +40,11 @@ namespace SKHEIJO
                     if (!interop.DialogResult)
                         break;
                     else if (interop.GameClient is null)
-                        ; // TODO : message box with error
+                        MessageBox.Show(@"
+The connection code seems to be invalid or the game server could not be contacted. Please verify that you entered the code correctly and that your internet connection is stable.
+
+Consider contacting the person who gave you the connection code should this error persist over multiple retries. The reason could be that the game server is experiencing some down times. Furhtermore, the game server needs to be accessible to the wider internet. A connection failure may indicate that the server is inacessible due to firewall restrictions.
+", "Connection failed", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 while (interop.GameClient is null);
 

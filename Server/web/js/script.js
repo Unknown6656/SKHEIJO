@@ -1,9 +1,11 @@
 "use strict";
 
-const OUT_PREFIX = "CommunicationData_";
+const TYPE_PREFIX = 'CommunicationData_';
+const COOKIE_CONN_STRING = 'cookie-connection-string';
+const SERVER_TIMEOUT = 30_000;
 
 
-let user_guid = NewUUID();
+let user_guid = UUID.New();
 
 
 var socket = undefined;
@@ -11,6 +13,8 @@ var input_loop = undefined;
 var output_loop = undefined;
 var incoming_queue = undefined;
 var outgoing_queue = undefined;
+var server_conversations = { };
+var notification_timeout = undefined;
 
 
 // TODO
@@ -68,11 +72,20 @@ function socket_open()
     socket.send(new Blob([
         user_guid.bytes
     ]));
-    input_loop = setInterval(async () =>
+    input_loop = setInterval(() =>
     {
         if (incoming_queue != undefined && socket != undefined && socket.readyState == WebSocket.OPEN)
             while (incoming_queue.length > 0)
-                await process_message(incoming_queue.shift());
+            {
+                let message = incoming_queue.shift();
+                let type = message.Type.trimStart(TYPE_PREFIX);
+                let data = message.Data;
+
+                if (!UUID.Empty.equals(UUID.Parse(message.Conversation)))
+                    server_conversations[message.Conversation] = { type: type, data: data };
+                else
+                    process_server_message(type, data);
+            }
         else
             socket_close();
     }, 5);
@@ -92,36 +105,103 @@ function socket_open()
     $('html,body').addClass('scrollable');
 }
 
-function send_message(message, type, conversation = undefined)
+function server_send_command(type, data, conversation = undefined)
 {
-    if (outgoing_queue === undefined)
+    if (outgoing_queue == undefined)
         return false;
 
-    if (conversation === undefined)
-        conversation = EmptyUUID();
+    if (conversation == undefined)
+        conversation = UUID.Empty;
+    else if (conversation instanceof UUID)
+        conversation = conversation.toString();
 
-    if (!("" + type).startsWith(OUT_PREFIX))
-        type = OUT_PREFIX + type;
+    server_conversations[conversation] = undefined;
+
+    if (!("" + type).startsWith(TYPE_PREFIX))
+        type = TYPE_PREFIX + type;
 
     let json = JSON.stringify({
+        Data: data,
         Type: type,
         FullType: type,
-        Data: message,
-        Guid: conversation.toString()
+        Conversation: conversation
     });
     outgoing_queue.push(json);
 
     return true;
 }
 
-async function process_message(message)
+// callback accepts two params: type and data
+function server_send_query(type, data, _callback)
 {
-    console.log(message);
+    let t_now = performance.now();
+    let conversation = UUID.New().toString();
+    let timeout = setInterval(function()
+    {
+        if (server_conversations[conversation] != undefined || performance.now() - t_now > SERVER_TIMEOUT)
+        {
+            clearInterval(timeout);
+
+            let message = server_conversations[conversation];
+            delete server_conversations[conversation];
+
+            if (message != undefined)
+                _callback(message.type, message.data);
+        }
+    }, 5);
+
+    server_send_command(type, data, conversation);
 }
 
+function process_server_message(type, data)
+{
+    switch (type)
+    {
+        case 'PlayerJoined':
+            show_notification(`Player ${data.UUID} joined!`);
+            break;
+        case 'PlayerLeft':
+            show_notification(`Player ${data.UUID} left!`);
+            break;
+        default:
+            console.log(message);
+    }
 
+    // TODO
 
-$('#login-string').on('input change paste keyup', function()
+}
+
+function show_notification(content, success = true)
+{
+    if (notification_timeout !== undefined)
+        clearTimeout(notification_timeout);
+
+    notification_timeout = undefined;
+
+    if (success)
+        $('#notification-container').removeClass('error');
+    else
+        $('#notification-container').addClass('error');
+
+    $('#notification-content').html(content);
+    $('#notification-container').addClass('visible');
+
+    notification_timeout = setTimeout(hide_notification, 6000);
+}
+
+function hide_notification()
+{
+    if (notification_timeout !== undefined)
+        clearTimeout(notification_timeout);
+
+    notification_timeout = undefined;
+
+    $('#notification-content').html('');
+    $('#notification-container').removeClass('visible');
+    $('#notification-container').removeClass('error');
+}
+
+function on_login_input_changed()
 {
     let input = $('#login-string').val().trim();
     let target = decode_connection_string(input);
@@ -138,7 +218,10 @@ $('#login-string').on('input change paste keyup', function()
         if (input.length > 0)
             $('#login-hint').removeClass('hidden');
     }
-});
+}
+
+
+$('#login-string').on('input change paste keyup', on_login_input_changed);
 
 $('#login-string').keypress(function(e){
     if (e.keyCode == 13)
@@ -147,7 +230,10 @@ $('#login-string').keypress(function(e){
 
 $('#login-start').click(function()
 {
-    let target = decode_connection_string($('#login-string').val());
+    let string = $('#login-string').val();
+    let target = decode_connection_string(string);
+
+    Cookies.set(COOKIE_CONN_STRING, string);
 
     if (socket === undefined && target !== undefined)
     {
@@ -166,5 +252,14 @@ $('#login-start').click(function()
     }
 });
 
-$('#login-failed-dismiss').click(() => $("#login-form").removeClass("failed"));
+$('#login-failed-dismiss').click(() => $('#login-form').removeClass('failed'));
 
+$('#notification-close').click(hide_notification);
+
+
+
+
+$('#login-string').val(Cookies.get(COOKIE_CONN_STRING));
+$('#login-string').focus();
+$('#login-string').select();
+on_login_input_changed();
