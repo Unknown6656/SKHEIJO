@@ -1,5 +1,6 @@
 ﻿using System.Windows.Documents;
 using System.Windows;
+using System.Threading.Tasks;
 using System.Net.Mail;
 using System;
 
@@ -69,14 +70,14 @@ namespace SKHEIJO
             Close();
         }
 
-        private void Btn_connect_Click(object sender, RoutedEventArgs e)
+        private async void Btn_connect_Click(object sender, RoutedEventArgs e)
         {
             if (Interop.Configuration.Client is Client client)
                 try
                 {
                     string text = tb_connect_string.Text.Trim();
 
-                    Interop.GameClient = new(client.UUID, text);
+                    Interop.GameClient = await Task.Factory.StartNew(() => new GameClient(client.UUID, text));
                 }
                 catch (Exception ex)
                 {

@@ -14,17 +14,17 @@
         <ResourceDictionary Source="Resources.xaml"/>
     </Window.Resources>
     <Grid>
-        <Image Source="assets/splash-screen.png"/>
-        <Grid Margin="80">
-            <Grid.Background>
+        <Image Source="assets/splash-screen.png" Margin="-10"/>
+        <Grid Margin="80 70">
+            <!--<Grid.Background>
                 <ImageBrush ImageSource="assets/splash-screen.png" Stretch="None"/>
             </Grid.Background>
             <Grid.Effect>
-                <BlurEffect Radius="10"/>
-            </Grid.Effect>
-            <Rectangle Fill="{DynamicResource color_bg}" Opacity=".5"/>
+                <BlurEffect Radius="5"/>
+            </Grid.Effect>-->
+            <Rectangle Fill="{DynamicResource color_bg}" Opacity=".7"/>
         </Grid>
-        <Grid Margin="100">
+        <Grid Margin="100 90">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
@@ -32,7 +32,7 @@
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="50"/>
-                <RowDefinition Height="30"/>
+                <RowDefinition Height="50"/>
                 <RowDefinition Height="30"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="30"/>
@@ -41,6 +41,7 @@
             <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" TextWrapping="Wrap" TextAlignment="Justify">
                 SKHEIJO is a digital adaptation of the German board game
                 <Hyperlink NavigateUri="https://www.magilano.com/produkt/skyjo">SKYJO</Hyperlink>.
+                Our mascot is a hamster called HEIKKI, hence the name adaptation SK<Bold>HEI</Bold>JO.
             </TextBlock>
             <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
                 <Grid.ColumnDefinitions>
