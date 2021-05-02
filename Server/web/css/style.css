@@ -7,8 +7,8 @@
     --font-mono: 'Consolas', 'Courier New', 'Courier', 'Lucida Console', 'Ubuntu Mono', monospace;
 
     --color-fg: black;
-    --color-bg: white;
-    --color-control-bg: lightgray;
+    --color-bg: PapayaWhip;
+    --color-control-bg: PeachPuff;
     --color-links: #003289;
 
     --font-size: 12pt;
@@ -48,6 +48,11 @@ textarea {
     padding: 2px;
 }
 
+button,
+input[type="button"] {
+    cursor: pointer;
+}
+
 a {
     text-decoration: underline;
     color: var(--color-links);
@@ -70,7 +75,7 @@ body.scrollable {
 }
 
 #main-container {
-    background-image: url('../img/background.png');
+    background-image: url('../img/banner-vertical.png');
     background-position: center center;
     background-repeat: no-repeat;
     background-size: cover;
@@ -83,8 +88,53 @@ body.scrollable {
     top: 0px;
 }
 
+@media (min-aspect-ratio: 1/1) {
+    #main-container {
+        background-image: url('../img/banner-horizontal.png');
+    }
+}
+
 body.scrollable #main-container {
     position: absolute;
+}
+
+#notification-container {
+    background-color: forestgreen;
+    pointer-events: none;
+    color: whitesmoke;
+    justify-content: left;
+    align-items: center;
+    position: fixed;
+    /* display: flex; */
+    padding: 10px;
+    z-index: 100;
+    min-height: 50px;
+    width: 100%;
+    right: 0px;
+    left: 0px;
+    top: 0px;
+
+    transform: translateY(-100%);
+
+    transition: all .4s;
+}
+
+#notification-container.error {
+    background-color: firebrick;
+}
+
+#notification-container.visible {
+    transform: translateY(0%);
+    pointer-events: all;
+}
+
+#notification-close,
+#notification-icon {
+    padding: 0px 10px;
+}
+
+#notification-close {
+    cursor: pointer;
 }
 
 #login-container {
