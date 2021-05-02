@@ -1,0 +1,10 @@
+{
+    "address": "192.168.0.26",
+    "port_tcp": 42088,
+    "port_web": 42089,
+    "server_name": "Test Server 1234",
+    "banned_names": [
+        "admin",
+        "server"
+    ]
+}

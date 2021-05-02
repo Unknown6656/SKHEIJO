@@ -1,4 +1,8 @@
 ﻿using System;
+using System.IO;
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using SKHEIJO;
 using Unknown6656.Common;
@@ -8,6 +12,10 @@ namespace Server
 {
     public static class Program
     {
+        private static readonly DirectoryInfo ASM_DIR = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!;
+
+
+
         public static async Task Main(string[] args)
         {
             Logger.Start();
@@ -16,10 +24,12 @@ namespace Server
             //Game game = new(new Player[] { new(Guid.NewGuid()), new(Guid.NewGuid()), new(Guid.NewGuid()) });
             //game.ResetAndDealCards(150, 0);
 
+            ServerConfig? config = JsonSerializer.Deserialize<ServerConfig>(From.File($"{ASM_DIR.FullName}/server-config.json").ToString());
 
+            config ??= new("0.0.0.0", 42088, 42089, "test server", new string[] { "admin", "server" });
 
-            // using GameServer server = await GameServer.CreateGameServer(14488, 14499, "lol kay");
-            using GameServer server = GameServer.CreateLocalGameServer("192.168.0.26", 14488, 14499, "lol kay");
+            // using GameServer server = await GameServer.CreateGameServer(config);
+            using GameServer server = GameServer.CreateLocalGameServer(config);
             
             Console.WriteLine($@"
 --------------------------------------------
@@ -38,20 +48,16 @@ namespace Server
             };
             server.Start();
 
-            while (server.IsRunning)
+            string cmd;
+
+            do
             {
-                string cmd;
-
-                do
-                {
-                    cmd = Console.ReadLine() ?? "";
-                    server.NotifyAll(new CommunicationData_ServerInformation(cmd));
-                }
-                while (cmd != "q");
-
-                server.Stop();
+                cmd = Console.ReadLine() ?? "";
+                //TODO:?
             }
+            while (cmd != "q");
 
+            await server.Stop();
             await Logger.Stop();
         }
     }
