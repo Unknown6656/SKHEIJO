@@ -52,6 +52,9 @@ UUID.New = () =>
 
 UUID.Parse = string =>
 {
+    if (string == null || string == undefined)
+        return null;
+
     let match = string.match(__UUID_REGEX__);
 
     if (match.length)
