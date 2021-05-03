@@ -6,14 +6,22 @@
     --font-main: 'Bahnschrift', 'Helvetica', 'Arial', 'Lucida Grande', sans-serif;
     --font-mono: 'Consolas', 'Courier New', 'Courier', 'Lucida Console', 'Ubuntu Mono', monospace;
 
-    --color-fg: black;
-    --color-bg: PapayaWhip;
-    --color-control-bg: PeachPuff;
-    --color-links: #003289;
+    --color-fg:                  #000;
+    --color-bg:                  #FED;
+    --color-bg-hover:            #FCB;
+    --color-bg-active:           #CB9;
+    --color-control-bg:          #DCC;
+    --color-control-bg-hover:    #CBB;
+    --color-control-bg-active:   #BAA;
+    --color-control-bg-disabled: #888;
+    --color-control-fg-disabled: #555;
+    --color-control-fg-focused:  #26A;
+    --color-control-bg-focused:  #CCD;
+    --color-links:               #26A;
 
     --font-size: 12pt;
 
-    --min-page-width: 360px;
+    --menu-size: 50px;
 
     background-color: var(--color-bg);
     font-family: var(--font-main);
@@ -29,12 +37,17 @@
     transition: opacity .3s;
 }
 
-.hidden {
+.hidden,
+.hidden * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+     -khtml-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+            user-select: none;
     pointer-events: none;
     opacity: 0;
 }
-
-
 
 input,
 button,
@@ -46,6 +59,41 @@ textarea {
     font-size: var(--font-size);
     color: var(--color-fg);
     padding: 2px;
+
+    transition: color .3s, background-color .3s;
+}
+
+input:hover,
+button:hover {
+    background-color: var(--color-control-bg-hover);
+    border-color: var(--color-fg-hover);
+    color: var(--color-fg-hover);
+}
+
+input:active,
+button:active {
+    background-color: var(--color-control-bg-active);
+    border-color: var(--color-fg-active);
+    color: var(--color-fg-active);
+}
+
+input:disabled,
+input[disabled],
+button:disabled,
+button[disabled],
+textarea:disabled,
+textarea[disabled] {
+    background-color: var(--color-control-bg-disabled);
+    border-color: var(--color-control-fg-disabledled);
+    color: var(--color-control-fg-disabledled);
+}
+
+button:focus,
+input:focus {
+    background-color: var(--color-control-bg-focused);
+    border-color: var(--color-control-fg-focused);
+    color: var(--color-control-fg-focused);
+    outline: 0;
 }
 
 button,
@@ -68,10 +116,7 @@ html {
 body {
     overflow: hidden;
     min-height: 100%;
-}
-
-body.scrollable {
-    overflow: scroll;
+    margin: 0px;
 }
 
 #main-container {
@@ -92,10 +137,6 @@ body.scrollable {
     #main-container {
         background-image: url('../img/banner-horizontal.png');
     }
-}
-
-body.scrollable #main-container {
-    position: absolute;
 }
 
 #notification-container {
@@ -137,14 +178,10 @@ body.scrollable #main-container {
     cursor: pointer;
 }
 
-#login-container {
-    justify-content: center;
-    align-items: center;
-    display: flex;
-}
-
+#game-container,
 #login-container,
-#game-container {
+#username-container,
+#usage-container {
     position: absolute;
     height: 100%;
     width: 100%;
@@ -155,7 +192,17 @@ body.scrollable #main-container {
     top: 0px;
 }
 
-#login-form {
+#login-container,
+#username-container,
+#usage-container {
+    justify-content: center;
+    align-items: center;
+    display: flex;
+}
+
+#login-form,
+#username-form,
+#usage-warning {
     border: 1px solid var(--color-fg);
     background-color: var(--color-bg);
     text-align: justify;
@@ -163,6 +210,13 @@ body.scrollable #main-container {
     position: absolute;
     padding: 20px;
     width: 500px;
+}
+
+#usage-warning {
+    background-color: lightcoral;
+    color: firebrick;
+    font-size: 1.2em;
+    z-index: 1000;
 }
 
 #login-loading,
@@ -215,15 +269,18 @@ body.scrollable #main-container {
     padding: 20px;
 }
 
-#login-string {
+#login-string,
+#username-input {
     width: 100%;
 }
 
-#login-start {
-    width: 200px;
+#login-start,
+#username-apply {
+    min-width: 200px;
 }
 
-#login-failed-dismiss {
+#login-failed-dismiss,
+#usage-warning-dismiss {
     width: 100%;
 }
 
@@ -234,24 +291,96 @@ body.scrollable #main-container {
     color: firebrick;
 }
 
-#login-container.hidden ~ #game-container {
-    pointer-events: all;
-    position: absolute;
-    height: unset;
-    bottom: unset;
-    opacity: 1;
-}
-
-#game-container {
-    pointer-events: none;
-    opacity: 0;
-
-    background-color: green;
-}
-
-
 @keyframes spin {
     100% {
         transform: rotate(360deg);
     }
 }
+
+#username-container .first-only,
+#username-container:not(.first-time) .first-only {
+    display: hidden;
+}
+
+#username-container.first-time .first-only {
+    display: unset;
+}
+
+#username-error {
+    font-style: italic;
+    color: firebrick;
+}
+
+#game-container {
+    position: absolute;
+    height: 100%;
+    bottom: unset;
+}
+
+.menu-bar {
+    border-right: 1px solid var(--color-fg);
+    background-color: var(--color-bg);
+    background-repeat: no-repeat;
+    background-image: url('../img/icon.png');
+    background-position: 5px 5px;
+    background-size: calc(var(--menu-size) - 10px);
+    position: absolute;
+    flex-flow: column;
+    display: flex;
+    padding: 50px 0px 0px 0px;
+    height: 100%;
+    width: calc(var(--menu-size) + 1px);
+    bottom: 0px;
+    left: 0px;
+    top: 0px;
+}
+
+.menu-spacer {
+    width: var(--menu-size);
+    min-height: 50px;
+    height: 100%;
+}
+
+.menu-item {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: calc(var(--menu-size) - 20px);
+    cursor: pointer;
+    padding: 10px;
+    height: var(--menu-size);
+    width: var(--menu-size);
+}
+
+.menu-item:hover {
+    background-color: var(--color-bg-hover);
+}
+
+.menu-item:active {
+    background-color: var(--color-bg-active);
+}
+
+.menu-item[data-icon="game"] {
+    background-image: url('../img/menu-cards.svg');
+    transform: rotate(180deg);
+}
+
+.menu-item[data-icon="notifications"] {
+    background-image: url('../img/menu-notifications.svg');
+}
+
+.menu-item[data-icon="settings"] {
+    background-image: url('../img/menu-settings.svg');
+}
+
+.menu-item[data-icon="share"] {
+    background-image: url('../img/menu-share.svg');
+}
+
+.menu-item[data-icon="logout"] {
+    background-image: url('../img/menu-logout.svg');
+}
+
+
+
+
+

@@ -7,12 +7,39 @@
         <title>SKHEIJO</title>
         <!-- <meta name="viewport" content="width=device-width, initial-scale=1"> -->
         <meta name="viewport" content="width=800, user-scalable=yes">
-        <link rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
-        <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+        <link rel="shortcut icon" type="image/x-icon" href="img/favicon.ico"/>
+        <link rel="icon" type="image/x-icon" href="img/favicon.ico"/>
         <link rel="stylesheet" type="text/css" href="css/style.css"/>
     </head>
     <body>
         <div id="main-container">
+            <div id="usage-container">
+                <div id="usage-warning">
+                    <noscript>
+                        <h1>WARNING!</h1>
+                        <b>
+                            This site requires JavaScript to function properly.
+                            Please enable JavaScript in your browser settings.
+                        </b>
+                    </noscript>
+                    <div class="hidden">
+                        <h1>WARNING!</h1>
+                        <p>
+                            <b>
+                                This site relies on your device to possess a screen with a minimum horizontal resolution of 500px.
+                                You are seeing this message because your device might not have a screen wide enough to display this page correctly.
+                                Please note that some features might suffer.
+                            </b>
+                        </p>
+                        <p>
+                            <b>
+                                It is advisable to view this page on a tablet or computer, as these generally possess lager screens than mobile phones.
+                            </b>
+                        </p>
+                        <button id="usage-warning-dismiss">Dismiss Warning</button>
+                    </div>
+                </div>
+            </div>
             <div id="notification-container">
                 <table width="100%">
                     <tr width="100%">
@@ -22,7 +49,7 @@
                     </tr>
                 </table>
             </div>
-            <div id="login-container">
+            <div id="login-container" class="hidden">
                 <div id="login-form">
                     <div id="login-loading">
                         <span>Connecting ...</span>
@@ -71,13 +98,37 @@
                     </p>
                 </div>
             </div>
-            <div id="game-container">
-
+            <div id="username-container" class="hidden">
+                <div id="username-form">
+                    <h1>Welcome<span class="veteran"> back</span>!</h1>
+                    <p>
+                        In order to join a game, please select a name or alias.
+                    </p>
+                    <p class="first-only">
+                        It looks like you are currently connecting to the game for the first time.
+                        We have therefore auto-generated a name for you.
+                        You may change it below.
+                    </p>
+                    <input type="text" id="username-input" placeholder="your name or alias" maxlength="32"/>
+                    <p>
+                        <button id="username-apply">Use the user name</button>
+                    </p>
+                    <span id="username-error"></span>
+                </div>
+            </div>
+            <div id="game-container" class="hidden">
+                <div class="menu-bar">
+                    <div class="menu-item" data-icon="game"></div>
+                    <div class="menu-item" data-icon="share"></div>
+                    <div class="menu-item" data-icon="notifications"></div>
+                    <div class="menu-spacer"></div>
+                    <div class="menu-item" data-icon="settings"></div>
+                    <div class="menu-item" data-icon="logout"></div>
+                </div>
             </div>
         </div>
         <script type="text/javascript" language="javascript" src="js/jquery.js"></script>
-        <script type="text/javascript" language="javascript" src="js/guid.js"></script>
-        <script type="text/javascript" language="javascript" src="js/cookie.js"></script>
+        <script type="text/javascript" language="javascript" src="js/uuid.js"></script>
         <script type="text/javascript" language="javascript" src="js/script.js"></script>
     </body>
 </html>
