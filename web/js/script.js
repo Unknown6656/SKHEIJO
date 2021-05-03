@@ -1,11 +1,30 @@
 "use strict";
 
 const TYPE_PREFIX = 'CommunicationData_';
-const COOKIE_CONN_STRING = 'cookie-connection-string';
+const STORAGE_CONN_STRING = 'conn-string';
+const STORAGE_USER_NAME = 'user-name';
+const STORAGE_USER_UUID = 'user-uuid';
 const SERVER_TIMEOUT = 30_000;
 
 
-let user_guid = UUID.New();
+var user_uuid = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
+var user_name = window.localStorage.getItem(STORAGE_USER_NAME);
+var first_time = false;
+
+if (user_name == null)
+{
+    first_time = true;
+    user_name = generate_random_name();
+    window.localStorage.setItem(STORAGE_USER_NAME, user_name);
+}
+
+if (user_uuid == null)
+{
+    user_uuid = UUID.New();
+    window.localStorage.setItem(STORAGE_USER_UUID, user_uuid);
+}
+
+var notifications = [ ];
 
 
 var socket = undefined;
@@ -17,14 +36,52 @@ var server_conversations = { };
 var notification_timeout = undefined;
 
 
-// TODO
+if (!window.matchMedia('(max-device-width: 500px)').matches)
+{
+    $('#usage-container').remove();
+    $('#login-container').removeClass('hidden');
+}
+else
+{
+    $('#usage-warning .hidden').removeClass('hidden');
+    $('#usage-warning-dismiss').click(function()
+    {
+        $('#usage-container').remove();
+        $('#login-container').removeClass('hidden');
+    });
+}
 
+let current_url = new URL(window.location.href);
+var url_conn_string = current_url.searchParams.get("code");
+
+if (url_conn_string == null)
+    url_conn_string = window.localStorage.getItem(STORAGE_CONN_STRING);
+
+$('#login-string').val(url_conn_string);
+$('#login-string').focus();
+$('#login-string').select();
+on_login_input_changed();
+
+
+
+function random(max)
+{
+    return Math.floor(Math.random() * max);
+}
+
+function generate_random_name()
+{
+    const prefix = ['red', 'green', 'blue', 'yellow', 'brown', 'white', 'pink', 'orange', 'turqoise', 'fast', 'large', 'slim'];
+    const suffix = ['fox', 'dog', 'cat', 'car', 'mouse', 'tiger', 'lion', 'eagle', 'pie', 'raptor', 'snake', 'turtle', 'salmon'];
+
+    return `${prefix[random(prefix.length)]} ${suffix[random(suffix.length)]} ${1 + random(10)}`;
+}
 
 function decode_connection_string(conn_string)
 {
     try
     {
-        let parts = atob(conn_string).split('$');
+        const parts = atob(conn_string).split('$');
 
         if (parts.length > 2)
             return parts[0] + ':' + parts[2];
@@ -46,7 +103,7 @@ function socket_error()
     }
     else
     {
-        alert("lol");
+        alert("error: socket closed and i dont know what to do");
         // TODO : report error
     }
 }
@@ -64,27 +121,28 @@ function socket_close()
 
     $('#login-form').removeClass('loading');
     $('#login-container').removeClass('hidden');
-    $('html,body').removeClass('scrollable');
+    $('#username-container').addClass('hidden');
+    $('#game-container').addClass('hidden');
 }
 
 function socket_open()
 {
     socket.send(new Blob([
-        user_guid.bytes
+        user_uuid.bytes
     ]));
     input_loop = setInterval(() =>
     {
         if (incoming_queue != undefined && socket != undefined && socket.readyState == WebSocket.OPEN)
             while (incoming_queue.length > 0)
             {
-                let message = incoming_queue.shift();
-                let type = message.Type.trimStart(TYPE_PREFIX);
-                let data = message.Data;
+                const message = incoming_queue.shift();
+                const type = message.Type.startsWith(TYPE_PREFIX) ? message.Type.substring(TYPE_PREFIX.length) : message.Type;
+                const data = message.Data;
 
-                if (!UUID.Empty.equals(UUID.Parse(message.Conversation)))
-                    server_conversations[message.Conversation] = { type: type, data: data };
-                else
+                if (message.Conversation == UUID.Empty.toString())
                     process_server_message(type, data);
+                else
+                    server_conversations[message.Conversation] = { type: type, data: data };
             }
         else
             socket_close();
@@ -101,8 +159,7 @@ function socket_open()
     window.onbeforeunload = () => 'Are you sure that you want to leave the game server?\n' +
                                 'You will be logged out from the current game.';
 
-    $('#login-container').addClass('hidden');
-    $('html,body').addClass('scrollable');
+    show_username_change();
 }
 
 function server_send_command(type, data, conversation = undefined)
@@ -120,7 +177,7 @@ function server_send_command(type, data, conversation = undefined)
     if (!("" + type).startsWith(TYPE_PREFIX))
         type = TYPE_PREFIX + type;
 
-    let json = JSON.stringify({
+    const json = JSON.stringify({
         Data: data,
         Type: type,
         FullType: type,
@@ -134,15 +191,15 @@ function server_send_command(type, data, conversation = undefined)
 // callback accepts two params: type and data
 function server_send_query(type, data, _callback)
 {
-    let t_now = performance.now();
-    let conversation = UUID.New().toString();
-    let timeout = setInterval(function()
+    const t_now = performance.now();
+    const conversation = UUID.New().toString();
+    const timeout = setInterval(function()
     {
         if (server_conversations[conversation] != undefined || performance.now() - t_now > SERVER_TIMEOUT)
         {
             clearInterval(timeout);
 
-            let message = server_conversations[conversation];
+            const message = server_conversations[conversation];
             delete server_conversations[conversation];
 
             if (message != undefined)
@@ -158,13 +215,13 @@ function process_server_message(type, data)
     switch (type)
     {
         case 'PlayerJoined':
-            show_notification(`Player ${data.UUID} joined!`);
+            show_notification('A player has joined the server.');
             break;
         case 'PlayerLeft':
-            show_notification(`Player ${data.UUID} left!`);
+            show_notification('A player has left the server.');
             break;
         default:
-            console.log(message);
+            console.log(data);
     }
 
     // TODO
@@ -177,6 +234,7 @@ function show_notification(content, success = true)
         clearTimeout(notification_timeout);
 
     notification_timeout = undefined;
+    notifications.push({ content: content, success: success, time: Date.now() });
 
     if (success)
         $('#notification-container').removeClass('error');
@@ -220,6 +278,27 @@ function on_login_input_changed()
     }
 }
 
+function show_username_change()
+{
+    $('#login-container').addClass('hidden');
+    $('#username-container').removeClass('hidden');
+    $('#username-error').html('');
+    $('#username-input').val(user_name);
+    $('#username-input').focus();
+    $('#username-input').select();
+
+    if (first_time)
+        $('#login-container').addClass('first-time');
+    else
+        $('#login-container').removeClass('first-time');
+}
+
+
+function comm_change_username(name, callback)
+{
+    server_send_query("PlayerNameChangeRequest", {Name: name}, (_, d) => callback(d));
+}
+
 
 $('#login-string').on('input change paste keyup', on_login_input_changed);
 
@@ -233,7 +312,7 @@ $('#login-start').click(function()
     let string = $('#login-string').val();
     let target = decode_connection_string(string);
 
-    Cookies.set(COOKIE_CONN_STRING, string);
+    window.localStorage.setItem(STORAGE_CONN_STRING, string);
 
     if (socket === undefined && target !== undefined)
     {
@@ -256,10 +335,24 @@ $('#login-failed-dismiss').click(() => $('#login-form').removeClass('failed'));
 
 $('#notification-close').click(hide_notification);
 
+$('#username-apply').click(() =>
+{
+    $('#username-error').html('');
+    comm_change_username($('#username-input').val(), response =>
+    {
+        if (response.Success)
+        {
+            user_name = $('#username-input').val();
+            window.localStorage.setItem(STORAGE_USER_NAME, user_name);
+
+            $('#game-container').removeClass('hidden');
+            $('#username-container').addClass('hidden');
+        }
+        else
+            $('#username-error').html(response.Message);
+    });
+});
 
 
 
-$('#login-string').val(Cookies.get(COOKIE_CONN_STRING));
-$('#login-string').focus();
-$('#login-string').select();
-on_login_input_changed();
+
