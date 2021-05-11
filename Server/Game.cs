@@ -104,14 +104,15 @@ namespace SKHEIJO
 
     public sealed class Game
     {
-        private GameState _state;
-        private int _current_index;
-        private Player? _final_round_initiator;
+        public static int MAX_PLAYERS = 10;
 
+        private GameState _state;
+        private Player? _final_round_initiator;
 
         public Stack<Card> DrawPile { get; }
         public Stack<Card> DiscardPile { get; }
         public List<PlayerState> Players { get; }
+        public int CurrentPlayerIndex { get; private set; }
 
         public GameState CurrentGameState
         {
@@ -122,26 +123,26 @@ namespace SKHEIJO
                 {
                     _state = value;
 
-                    OnGameStateChanged?.Invoke(this, value);
+                    OnGameStateChanged?.Invoke(this);
                 }
             }
         }
 
         public Card? DiscardedCard => DiscardPile.TryPeek(out Card card) ? card : null;
 
-        public PlayerState CurrentPlayer => Players[_current_index];
+        public PlayerState CurrentPlayer => Players[CurrentPlayerIndex];
 
 
         public event Action<Game, Player>? OnPlayerAdded;
         public event Action<Game, Player>? OnPlayerRemoved;
-        public event Action<Game, GameState>? OnGameStateChanged;
+        public event Action<Game>? OnGameStateChanged;
 
 
-        public Game(IEnumerable<Player> players)
+        public Game(IEnumerable<Player>? players = null)
         {
-            Players = players.ToList(p => new PlayerState(this, p));
+            Players = (players ?? Array.Empty<Player>()).ToList(p => new PlayerState(this, p));
             CurrentGameState = GameState.Stopped;
-            _current_index = 0;
+            CurrentPlayerIndex = 0;
             DrawPile = new();
             DiscardPile = new();
         }
@@ -152,9 +153,11 @@ namespace SKHEIJO
         {
             player_index = Players.Count;
 
-            if (CurrentGameState is GameState.Stopped && Players.None(p => player.Equals(p.Player)))
+            if (CurrentGameState is GameState.Stopped && Players.None(p => player.Equals(p.Player)) && Players.Count < MAX_PLAYERS)
             {
                 Players.Add(new(this, player));
+                OnPlayerAdded?.Invoke(this, player);
+                OnGameStateChanged?.Invoke(this);
 
                 return true;
             }
@@ -168,19 +171,24 @@ namespace SKHEIJO
         {
             if (index >= 0 && index < Players.Count)
             {
-                if (Players[index].Player.Equals(_final_round_initiator))
+                Player player = Players[index].Player;
+
+                if (player.Equals(_final_round_initiator))
                     _final_round_initiator = null;
 
-                if (_current_index == index && CurrentPlayer.CurrentlyDrawnCard is Card card)
+                if (CurrentPlayerIndex == index && CurrentPlayer.CurrentlyDrawnCard is Card card)
                     DiscardPile.Push(card);
-                else if (_current_index > index)
-                    --_current_index;
+                else if (CurrentPlayerIndex > index)
+                    --CurrentPlayerIndex;
 
                 for (int i = Players.Count - 2; i >= index; --i)
                     Players[i] = Players[i + 1];
 
                 Players.RemoveAt(Players.Count - 1);
-                NextPlayer(_current_index);
+                NextPlayer(CurrentPlayerIndex);
+
+                OnPlayerRemoved?.Invoke(this, player);
+                OnGameStateChanged?.Invoke(this);
 
                 return true;
             }
@@ -188,14 +196,20 @@ namespace SKHEIJO
                 return false;
         }
 
-        public int NextPlayer() => NextPlayer(_current_index + 1);
+        public int NextPlayer() => NextPlayer(CurrentPlayerIndex + 1);
 
-        public int NextPlayer(int player_index) => _current_index = (player_index + Players.Count) % Players.Count;
-
-        public void ResetAndDealCards(int total_cards, int first_player)
+        public int NextPlayer(int player_index)
         {
-            CurrentGameState = GameState.Stopped;
-            total_cards = Math.Min(total_cards, Players.Count * 12 + 30);
+            CurrentPlayerIndex = Players.Count == 0 ? 0 : (player_index + Players.Count) % Players.Count;
+
+            OnGameStateChanged?.Invoke(this);
+
+            return CurrentPlayerIndex;
+        }
+
+        public void DealCardsAndRestart(int total_cards = 150, int first_player = 0)
+        {
+            total_cards = Math.Max(total_cards, Players.Count * 15 + 30);
 
             Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card(i % 15 - 2))).ToArray();
 
@@ -223,6 +237,7 @@ namespace SKHEIJO
             while (index < cards.Length)
                 DrawPile.Push(cards[index++]);
 
+            CurrentGameState = GameState.Running;
             NextPlayer(first_player);
             _final_round_initiator = null;
         }
@@ -234,6 +249,7 @@ namespace SKHEIJO
             {
                 DiscardPile.Push(CurrentPlayer.GameField[row, column].card);
                 CurrentPlayer.GameField[row, column] = (drawn, true);
+                OnGameStateChanged?.Invoke(this);
 
                 return true;
             }
@@ -248,6 +264,7 @@ namespace SKHEIJO
                 {
                     DiscardPile.Push(drawn);
                     CurrentPlayer.GameField[row, column] = (drawn, true);
+                    OnGameStateChanged?.Invoke(this);
 
                     return true;
                 }
@@ -261,6 +278,7 @@ namespace SKHEIJO
                 return false;
 
             CurrentPlayer.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
+            OnGameStateChanged?.Invoke(this);
 
             return true;
         }
@@ -284,13 +302,15 @@ namespace SKHEIJO
 
                     ++column_count;
                     --col;
+
+                    OnGameStateChanged?.Invoke(this);
                 }
             }
         }
 
         public bool CurrentPlayer___FinishesFinalRound()
         {
-            PlayerState next = Players[(_current_index + 1 + Players.Count) % Players.Count];
+            PlayerState next = Players[(CurrentPlayerIndex + 1 + Players.Count) % Players.Count];
 
             return CurrentGameState is GameState.FinalRound && next.Player.Equals(_final_round_initiator) || next.IsFull;
         }
