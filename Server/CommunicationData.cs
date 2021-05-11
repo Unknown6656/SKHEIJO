@@ -84,7 +84,7 @@ namespace SKHEIJO
         int MaxPlayers
     ) : CommunicationData
     {
-        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, bool HasDrawn);
+        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, bool HasDrawn, int LeaderBoardIndex);
     }
 
     // client -> server

@@ -379,9 +379,13 @@ namespace SKHEIJO
             OnPlayerLeft?.Invoke(player);
         }
 
-        public void KickPlayer(Player player)
+        public async Task KickPlayer(Player player)
         {
             Notify(player, new CommunicationData_Disconnect(DisconnectReaseon.Kicked));
+
+            while (_outgoing.ToArray().Any(t => t.Item1 == player))
+                await Task.Delay(30);
+
             RemovePlayer(player);
         }
 
@@ -572,7 +576,7 @@ namespace SKHEIJO
 
                         $"(conv:{item.Item2.ConversationIdentifier}) {message} received from '{item.Item1}'.".Log(LogSource.Server);
 
-                        CommunicationData? reply = ProcessIncomingMessages(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
+                        CommunicationData? reply = await ProcessIncomingMessages(item.Item1, message, item.Item2.ConversationIdentifier != Guid.Empty);
 
                         if (reply is { })
                         {
@@ -625,7 +629,7 @@ namespace SKHEIJO
 
         #endregion
 
-        private CommunicationData? ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
+        private async Task<CommunicationData?> ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
         {
             switch (message)
             {
@@ -683,7 +687,7 @@ namespace SKHEIJO
                                 {
                                     if (this[uuid]?.Player is Player p)
                                     {
-                                        KickPlayer(p);
+                                        await KickPlayer(p);
 
                                         return CommunicationData_SuccessError.OK;
                                     }
@@ -724,13 +728,25 @@ namespace SKHEIJO
                                         return new CommunicationData_SuccessError(false, $"Unable to find a player with the UUID {uuid:B}.");
                                 }
                             case CommunicationData_AdminGameReset:
+                                CurrentGame?.FinishGame();
                                 ResetNewGame();
 
                                 return CommunicationData_SuccessError.OK;
                             case CommunicationData_AdminGameStart:
-                                IReadOnlyDictionary<Player, int>? res = CurrentGame?.FinishGame();
+                                {
+                                    if (CurrentGame is Game game)
+                                    {
+                                        game.DealCardsAndRestart();
 
+                                        NotifyGamePlayers(new CommunicationData_Notification("The game has started! Good luck to everyone!"));
+                                    }
+
+                                    return CommunicationData_SuccessError.OK;
+                                }
                             case CommunicationData_AdminGameStop:
+                                CurrentGame?.FinishGame();
+
+                                return CommunicationData_SuccessError.OK;
                             default:
                                 return OnIncomingData?.Invoke(player, message, reply_requested);
                         }
@@ -784,6 +800,7 @@ namespace SKHEIJO
 
         private void BroadcastCurrentGameState(Game game, IEnumerable<Player> targets)
         {
+            (Player Player, int Points)[] leader_board = game.GetCurrentLeaderBoard();
             CommunicationData_GameUpdate.GameUpdatePlayerData[] players = game.Players.ToArray(p =>
             {
                 int cols = p.Dimensions.columns;
@@ -793,7 +810,13 @@ namespace SKHEIJO
                 for (int i = 0; i < cards.Length; ++i)
                     cards[i] = p.GameField[i / cols, i % cols] switch { (Card c, true) => c, _ => null };
 
-                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard is { });
+                int index = (from t in leader_board.WithIndex()
+                             where t.Item.Player == p.Player
+                             select t.Index + 1).FirstOrDefault();
+
+                index = index == 0 ? leader_board.Length - 1 : index - 1;
+
+                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard is { }, index);
             });
 
             foreach (Player player in targets)
@@ -804,7 +827,7 @@ namespace SKHEIJO
                     game.DiscardedCard,
                     game.CurrentGameState,
                     players,
-                    game.CurrentPlayerIndex,
+                    game.CurrentGameState is GameState.Running or GameState.FinalRound ? game.CurrentPlayerIndex : -1,
                     game.Players.FirstOrDefault(p => p.Player == player)?.CurrentlyDrawnCard,
                     Game.MAX_PLAYERS
                 ));
