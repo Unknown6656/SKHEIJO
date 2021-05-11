@@ -1,4 +1,12 @@
-const UNSUPPORTED_BROWSERS = {
+/* THIS SCRIPT HAS TO BE ES5 COMPATIBLE */
+
+var browser = {
+    user_agent: navigator.userAgent,
+    supported: false,
+    name: null,
+    version: null
+}
+var UNSUPPORTED_BROWSERS = {
     Chrome: 66,
     Firefox: 60,
     // IE: 11,   <-- uncommented = no IE support!
@@ -8,71 +16,115 @@ const UNSUPPORTED_BROWSERS = {
     Samsung: 7,
 };
 
-
-class Browser
 {
-    constructor()
+    var tem, M = browser.user_agent.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
+
+    if (/trident/i.test(M[1]))
     {
-        this.user_agent = navigator.userAgent;
+        tem = /\brv[ :]+(\d+)/g.exec(browser.user_agent) || [];
+        browser.name = "IE";
+        browser.version = tem[1] || "";
+    }
+    else if (M[1] === "Chrome")
+    {
+        tem = browser.user_agent.match(/\b(OPR|Edge)\/(\d+)/);
 
-        let tem, M = this.user_agent.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
-
-        if (/trident/i.test(M[1]))
+        if (tem != null)
         {
-            tem = /\brv[ :]+(\d+)/g.exec(this.user_agent) || [];
-            this.browser = { name: "IE", version: tem[1] || "" };
-
-            return;
+            browser.name = tem[1].replace("OPR", "Opera");
+            browser.version = tem[2];
         }
+    }
 
-        if (M[1] === "Chrome")
-        {
-            tem = this.user_agent.match(/\b(OPR|Edge)\/(\d+)/);
-
-            if (tem != null)
-            {
-                this.browser = { name: tem[1].replace("OPR", "Opera"), version: tem[2] };
-
-                return;
-            }
-        }
-
+    if (browser.name == null)
+    {
         M = M[2] ? [M[1], M[2]] : [navigator.appName, navigator.appVersion, "-?"];
 
-        if ((tem = this.user_agent.match(/version\/(\d+)/i)) != null)
+        if ((tem = browser.user_agent.match(/version\/(\d+)/i)) != null)
             M.splice(1, 1, tem[1]);
 
-        this.browser = { name: M[0], version: M[1] };
+        browser.name = M[0];
+        browser.version = M[1];
     }
-
-    get isIE() { return this.browser.name === 'IE'; }
-
-    get isEdge() { return this.browser.name === 'Edge'; }
-
-    get isMicrosoft() { return this.isIE || this.isEdge; }
-
-    get isFirefox() { return this.browser.name === 'Firefox'; }
-
-    get isChrome() { return this.browser.name === 'Chrome'; }
-
-    get isSafari() { return this.browser.name === 'Safari'; }
-
-    get isAndroid() { return /Android/i.test(this.user_agent); }
-
-    get isBlackBerry() { return /BlackBerry/i.test(this.user_agent); }
-
-    get isWindowsMobile() { return /IEMobile/i.test(this.user_agent); }
-
-    get isIOS() { return /iPhone|iPad|iPod/i.test(this.user_agent); }
-
-    get isMobile() { return (this.isAndroid || this.isBlackBerry || this.isWindowsMobile || this.isIOS); }
-
-    isSupported() {
-        return UNSUPPORTED_BROWSERS.hasOwnProperty(this.browser.name)
-            && +this.browser.version >= UNSUPPORTED_BROWSERS[this.browser.name];
-    }
-
-    toString() { return `${this.browser.name} ${this.browser.version}`; }
 }
 
-Browser.current = new Browser();
+browser.isIE = browser.name === 'IE';
+browser.isEdge = browser.name === 'Edge';
+browser.isMicrosoft = browser.isIE || browser.isEdge;
+browser.isFirefox = browser.name === 'Firefox';
+browser.isChrome = browser.name === 'Chrome';
+browser.isSafari = browser.name === 'Safari';
+browser.isAndroid = /Android/i.test(browser.user_agent);
+browser.isBlackBerry = /BlackBerry/i.test(browser.user_agent);
+browser.isWindowsMobile = /IEMobile/i.test(browser.user_agent);
+browser.isIOS = /iPhone|iPad|iPod/i.test(browser.user_agent);
+browser.isMobile = browser.isAndroid || browser.isBlackBerry || browser.isWindowsMobile || browser.isIOS;
+browser.isSupported = UNSUPPORTED_BROWSERS.hasOwnProperty(browser.name) && +browser.version >= UNSUPPORTED_BROWSERS[browser.name];
+browser.string = browser.name + ' ' + browser.version;
+
+
+{
+    var show_warning = false;
+    var min_screen_size = window.getComputedStyle(document.body).getPropertyValue('--min-width');
+
+    $('#min-width').html(min_screen_size);
+
+    if (!browser.isSupported)
+    {
+        var supported = '';
+
+        for (var b in UNSUPPORTED_BROWSERS)
+            supported += '<tr><td>' + b + ':</td><td>&gt; ' + UNSUPPORTED_BROWSERS[b] + '</td></tr>';
+
+        $('#usage-warning [data-warning="version"]').removeClass('hidden');
+        $('#current-browser').html(browser.string);
+        $('#supported-browsers').html(supported);
+
+        show_warning = true;
+    }
+
+    if (window.matchMedia('(max-device-width: ' + min_screen_size + ')').matches ||
+        window.matchMedia('(max-device-height: ' + min_screen_size + ')').matches)
+    {
+        var min_height = parseInt(min_screen_size.replace('px', ''));
+        var viewport = $("#viewport");
+
+        if (screen.width < min_height)
+            viewport.attr('content', viewport.attr('content') + ', height=' + min_height);
+
+        $('#usage-warning [data-warning="size"]').removeClass('hidden');
+
+        show_warning = true;
+    }
+
+    if (show_warning)
+    {
+        $('#usage-warning-dismiss').removeClass('hidden');
+        $('#usage-warning-dismiss').click(function()
+        {
+            $('#usage-container').remove();
+            $('#login-container').removeClass('hidden');
+
+            load_page();
+        });
+    }
+    else
+    {
+        $('#usage-container').remove();
+        $('#login-container').removeClass('hidden');
+
+        load_page();
+    }
+}
+
+function load_page()
+{
+    var interval = setInterval(function()
+    {
+        if (on_page_loaded != undefined)
+        {
+            clearInterval(interval);
+            on_page_loaded();
+        }
+    }, 200);
+}
