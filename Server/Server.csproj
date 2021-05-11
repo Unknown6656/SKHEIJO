@@ -30,7 +30,7 @@
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Fleck" Version="1.2.0" />
-        <PackageReference Include="Unknown6656.Core" Version="1.0.21" />
+        <PackageReference Include="Unknown6656.Core" Version="1.0.21.1" />
     </ItemGroup>
     <ItemGroup>
       <None Update="server-config.json">

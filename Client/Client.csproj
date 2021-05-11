@@ -45,7 +45,7 @@
       </Content>
     </ItemGroup>
     <ItemGroup>
-      <PackageReference Include="Unknown6656.Core" Version="1.0.21" />
+      <PackageReference Include="Unknown6656.Core" Version="1.0.21.1" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Server\Server.csproj" />
