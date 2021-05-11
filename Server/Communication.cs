@@ -1,15 +1,16 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
+using System.Threading.Tasks;
+using System.Threading;
+using System.Diagnostics;
+using System.Net.Sockets;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.Sockets;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using System.IO;
+using System;
 
 using Fleck;
 
@@ -46,48 +47,47 @@ namespace SKHEIJO
     public sealed class ConnectionString
     {
         public (ushort CSharp, ushort Web) Ports { get; }
-        public IPAddress Address { get; }
+        public string Address { get; }
         public bool IsIPv6 { get; }
-        public IPEndPoint CSharpEndPoint { get; }
 
-
-        public ConnectionString(string address, ushort port_csharp, ushort port_web)
-            : this(IPAddress.Parse(address), port_csharp, port_web)
-        {
-        }
 
         public ConnectionString(IPAddress address, ushort port_csharp, ushort port_web)
             : this(address, (port_csharp, port_web))
         {
         }
 
-        public ConnectionString(string address, (ushort csharp, ushort web) ports)
-            : this(IPAddress.Parse(address), ports)
+        public ConnectionString(IPAddress address, (ushort csharp, ushort web) ports)
+            : this(address.ToString(), ports, address.AddressFamily is AddressFamily.InterNetworkV6)
         {
         }
 
-        public ConnectionString(IPAddress address, (ushort csharp, ushort web) ports)
+        public ConnectionString(string address, ushort port_csharp, ushort port_web, bool is_v6 = false)
+            : this(address, (port_csharp, port_web), is_v6)
+        {
+        }
+
+        public ConnectionString(string address, (ushort csharp, ushort web) ports, bool is_v6 = false)
         {
             Address = address;
             Ports = ports;
-            CSharpEndPoint = new(Address, Ports.CSharp);
-            IsIPv6 = address.AddressFamily is AddressFamily.InterNetworkV6;
+            IsIPv6 = is_v6;
         }
 
         public override int GetHashCode() => ToString().GetHashCode();
 
         public override bool Equals(object? obj) => obj is ConnectionString cs && cs.ToString() == ToString();
 
-        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.Web}").ToBase64();
+        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.Web}${(IsIPv6 ? 1 : 0)}").ToBase64();
 
         public static ConnectionString FromString(string connection_string)
         {
             string[] parts = From.Base64(connection_string).ToString().Split('$');
 
             return new(
-                IPAddress.Parse(parts[0]),
+                parts[0],
                 ushort.Parse(parts[1]),
-                ushort.Parse(parts[2])
+                ushort.Parse(parts[2]),
+                parts[3] == "1"
             );
         }
 
@@ -111,8 +111,6 @@ namespace SKHEIJO
     public readonly struct RawCommunicationPacket
     {
         private record internal_data(string Type, string? FullType, Guid Conversation, object Data);
-
-        private static readonly JsonSerializerOptions _json_options = new() { PropertyNameCaseInsensitive = true };
 
         public static Encoding Encoding { get; } = Encoding.UTF8;
 
@@ -144,9 +142,7 @@ namespace SKHEIJO
         {
             try
             {
-                string json = message.Match(Encoding.GetString, LINQ.id);
-
-                if (JsonSerializer.Deserialize<internal_data>(json, _json_options) is internal_data { Type: string } data)
+                if (message.Match(From.Bytes, From.String).ToJSON<internal_data>(Encoding) is internal_data { Type: string } data)
                 {
                     if (!CommunicationData.KnownDerivativeTypes.TryGetValue(data.Type, out Type? type))
                         type = Type.GetType(data.FullType ?? data.Type);
@@ -166,7 +162,7 @@ namespace SKHEIJO
         public static RawCommunicationPacket SerializeData(Guid conversation, CommunicationData data)
         {
             Type type = data.GetType();
-            string json = JsonSerializer.Serialize(new internal_data(type.Name, type.AssemblyQualifiedName, conversation, data), _json_options);
+            string json = From.JSON(new internal_data(type.Name, type.AssemblyQualifiedName, conversation, data)).ToString();
 
             return new(conversation, json);
         }
@@ -189,10 +185,36 @@ namespace SKHEIJO
     public sealed class PlayerInfo
         : IDisposable
     {
+        private string _name;
+        private bool _is_admin;
+
         public Player Player { get; }
         public GameServer Server { get; }
         public Union<BinaryWriter, WebSocketConnection> Connection { get; }
-        public string Name { get; set; } = "Player";
+
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                if (Interlocked.Exchange(ref _name, value) != value)
+                    Server.NotifyAll(new CommunicationData_PlayerInfoChanged(Player.UUID));
+            }
+        }
+
+        public bool IsAdmin
+        {
+            get => _is_admin;
+            set
+            {
+                if (_is_admin != value)
+                {
+                    _is_admin = value;
+
+                    Server.NotifyAll(new CommunicationData_PlayerInfoChanged(Player.UUID));
+                }
+            }
+        }
 
 
         internal PlayerInfo(GameServer server, Player player, Union<BinaryWriter, WebSocketConnection> connection)
@@ -200,7 +222,10 @@ namespace SKHEIJO
             Server = server;
             Player = player;
             Connection = connection;
+            _name = $"Player-{player.UUID.GetHashCode():x8}";
         }
+
+        public override string ToString() => $"{Name}{(IsAdmin ? " (admin)" : "")}: {Player}";
 
         public void Dispose()
         {
@@ -221,11 +246,14 @@ namespace SKHEIJO
     public sealed class GameServer
         : IDisposable
     {
-        private readonly ConcurrentDictionary<Player, PlayerInfo> _players;
+        internal readonly ConcurrentDictionary<Player, PlayerInfo> _players;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _incoming;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _outgoing;
         private volatile int _running;
+        private volatile int _stopping;
 
+        public HashSet<Guid>? AdminUUIDs { get; set; }
+        public Game? CurrentGame { get; private set; }
         public ConnectionString ConnectionString { get; }
         public WebSocketServer WebSocketServer { get; }
         public TcpListener TCPListener { get; }
@@ -233,10 +261,9 @@ namespace SKHEIJO
         public string ServerName { get; }
         public bool IsRunning => _running != 0;
 
+        public PlayerInfo? this[Player player] => _players.TryGetValue(player, out PlayerInfo? info) ? info : null;
 
-        public PlayerInfo this[Player player] => _players[player];
-
-        public PlayerInfo this[Guid guid] => _players.ToArray().SelectWhere(entry => entry.Key.UUID == guid, entry => entry.Value).First();
+        public PlayerInfo? this[Guid guid] => _players.ToArray().SelectWhere(entry => entry.Key.UUID == guid, entry => entry.Value).FirstOrDefault();
 
 
         public event IncomingDataDelegate? OnIncomingData;
@@ -253,15 +280,21 @@ namespace SKHEIJO
             WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.Web}", true);
             WebSocketServer.ListenerSocket.NoDelay = true;
             WebSocketServer.RestartAfterListenError = true;
+            CurrentGame = null;
             _players = new();
             _incoming = new();
             _outgoing = new();
+            AdminUUIDs = new();
         }
 
         public void Start()
         {
+            _stopping = 0;
+
             if (Interlocked.Exchange(ref _running, 1) == 0)
             {
+                ResetNewGame();
+
                 TCPListener.Start();
                 WebSocketServer.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
 
@@ -287,12 +320,18 @@ namespace SKHEIJO
 
         public async Task Stop()
         {
-            if (Interlocked.Exchange(ref _running, 0) != 0)
+            if (Interlocked.Exchange(ref _stopping, 1) == 0 && _running != 0)
             {
                 NotifyAll(new CommunicationData_Disconnect(DisconnectReaseon.ServerShutdown));
 
-                while (_outgoing.Count > 0)
-                    await Task.Delay(2);
+                Stopwatch sw = new();
+
+                sw.Start();
+
+                while (_outgoing.Count > 0 && sw.ElapsedMilliseconds < 5_000)
+                    await Task.Delay(50);
+
+                _running = 0;
 
                 TCPListener.Stop();
 
@@ -300,6 +339,7 @@ namespace SKHEIJO
                     info.Dispose();
 
                 _players.Clear();
+                _stopping = 0;
             }
         }
 
@@ -320,17 +360,72 @@ namespace SKHEIJO
             NotifyAllExcept(player, new CommunicationData_PlayerJoined(player.UUID));
             Notify(player, new CommunicationData_ServerInformation(ServerName, _players.Values.ToArray(p => p.Player.UUID)));
             OnPlayerJoined?.Invoke(player);
+
+            ChangeAdminStatus(player, AdminUUIDs?.Contains(player.UUID) ?? false);
+
+            if (CurrentGame is Game game)
+                BroadcastCurrentGameState(game, new[] { player });
         }
 
         private void RemovePlayer(Player player)
         {
-            _players.TryRemove(player, out _);
+            RemovePlayerFromCurrentGame(player);
+            _players.TryRemove(player, out PlayerInfo? info);
+            info?.Dispose();
 
             $"{player} disconnected.".Warn(LogSource.Server);
 
             NotifyAllExcept(player, new CommunicationData_PlayerLeft(player.UUID));
             OnPlayerLeft?.Invoke(player);
         }
+
+        public void KickPlayer(Player player)
+        {
+            Notify(player, new CommunicationData_Disconnect(DisconnectReaseon.Kicked));
+            RemovePlayer(player);
+        }
+
+        public void ChangeAdminStatus(Player player, bool make_admin)
+        {
+            if (this[player] is PlayerInfo info)
+                info.IsAdmin = make_admin;
+
+            AdminUUIDs ??= new();
+
+            if (make_admin)
+                AdminUUIDs.Add(player.UUID);
+            else
+                AdminUUIDs.Remove(player.UUID);
+        }
+
+        public Player? TryResolvePlayer(string name_or_uuid)
+        {
+            name_or_uuid = name_or_uuid.Trim();
+
+            (Player player, PlayerInfo info)[] players = (_players as IReadOnlyDictionary<Player, PlayerInfo>).FromDictionary();
+            Player? player = null;
+            Player[] match;
+
+            if (Guid.TryParse(name_or_uuid, out Guid uuid))
+                player = players.FirstOrDefault(p => p.player.UUID == uuid).player;
+
+            player ??= players.FirstOrDefault(p => p.info.Name.Equals(name_or_uuid, StringComparison.InvariantCultureIgnoreCase)).player;
+
+            if (player is null)
+            {
+                match = players.ToArrayWhere(p => p.info.Name.Contains(name_or_uuid, StringComparison.InvariantCultureIgnoreCase), p => p.player);
+
+                if (match.Length == 0)
+                    match = players.Select(p => p.player).ToArrayWhere(p => p.UUID.ToString().Contains(name_or_uuid, StringComparison.InvariantCultureIgnoreCase));
+
+                if (match.Length == 1)
+                    player = match[0];
+            }
+
+            return player;
+        }
+
+        #region COMMUNICATION LOGIC
 
         private async Task OnTCPClientConnected(TcpClient client)
         {
@@ -440,7 +535,7 @@ namespace SKHEIJO
                         any = true;
                         (Player player, RawCommunicationPacket packet) = item;
 
-                        if (_players.TryGetValue(player, out PlayerInfo? info))
+                        if (this[player] is PlayerInfo info)
                         {
                             info.Connection.Match(
                                 packet.WriteTo,
@@ -496,6 +591,40 @@ namespace SKHEIJO
             }
         }
 
+        private void OnWebsocketMessage(WebSocketConnection socket, Player player, Union<byte[], string> message)
+        {
+            if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
+                _incoming.Enqueue((player, new(guid, message)));
+            else
+                $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
+        }
+
+        public void Notify(Player player, params CommunicationData[] data)
+        {
+            foreach (CommunicationData d in data)
+            {
+                $"Sending {d} to '{player}'...".Log(LogSource.Server);
+
+                _outgoing.Enqueue((player, RawCommunicationPacket.SerializeData(Guid.Empty, d)));
+            }
+        }
+
+        public void Notify(IEnumerable<Player> players, params CommunicationData[] data) => players.Do(p => Notify(p, data));
+
+        public void NotifyAll(params CommunicationData[] data) => Notify(_players.Keys, data);
+
+        public void NotifyAllExcept(Player player, params CommunicationData[] data) => NotifyAllExcept(new[] { player }, data);
+
+        public void NotifyAllExcept(IEnumerable<Player> players, params CommunicationData[] data) => Notify(_players.Keys.Except(players), data);
+
+        public void NotifyGamePlayers(params CommunicationData[] data)
+        {
+            if (CurrentGame is Game game)
+                Notify(game.Players.Select(p => p.Player), data);
+        }
+
+        #endregion
+
         private CommunicationData? ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
         {
             switch (message)
@@ -505,6 +634,13 @@ namespace SKHEIJO
                         string? banned = null;
                         string name = request.Name.Trim();
 
+                        if (name.Length < 2 && name.Length > 32)
+                            return new CommunicationData_SuccessError(false, "Your name is shorter than 2 characters or is longer than 32 characters.");
+                        else if (!name.All(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_'))
+                            return new CommunicationData_SuccessError(false, "Your name may only contain alpha-numeric characters and spaces or hyphens.");
+                        else if (_players.Values.Any(info => name.Equals(info.Name, StringComparison.InvariantCultureIgnoreCase)))
+                            return new CommunicationData_SuccessError(false, $"The name '{name}' has already been taken by somebody else.");
+
                         foreach (string s in BannedNames.ToArray())
                             if (name.Contains(s, StringComparison.InvariantCultureIgnoreCase))
                             {
@@ -513,63 +649,189 @@ namespace SKHEIJO
                                 break;
                             }
 
-                        if (banned is null && name.Length > 1 && name.Length <= 32)
+                        if (banned is null)
                         {
-                            NotifyAllExcept(player, new CommunicationData_PlayerNameUpdate(player.UUID, name));
+                            if (this[player] is PlayerInfo info)
+                                info.Name = name;
 
-                            return new CommunicationData_SucessError(true, null);
+                            return CommunicationData_SuccessError.OK;
                         }
                         else
-                            return new CommunicationData_SucessError(false, $"Your name contains either a banned word, is shorter than 2 characters, or is longer than 32 characters.");
+                            return new CommunicationData_SuccessError(false, "Your name contains a banned word :(");
                     }
+                case CommunicationData_GameJoinRequest request:
+                    if (CurrentGame?.TryAddPlayer(player, out _) ?? false)
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "Unable to join game: The game is either currently running or has not yet been initiated by an administrator.");
+                case CommunicationData_GameLeaveRequest request:
+                    return new CommunicationData_SuccessError(CurrentGame?.RemovePlayer(player) ?? false, null);
+                case CommunicationData_PlayerQueryInfo request:
+                    {
+                        if (this[request.UUID] is PlayerInfo info)
+                            return new CommunicationData_PlayerInfo(true, info.Name, info.IsAdmin, CurrentGame?.Players?.Any(p => p.Player.UUID == request.UUID) ?? false);
+                        else
+                            return CommunicationData_PlayerInfo.NotFound;
+                    }
+                case CommunicationData_AdminCommand admin_request:
+                    if (this[player] is not { IsAdmin: true })
+                        return new CommunicationData_SuccessError(false, "Unable to execute command: You must be an administrator.");
+                    else
+                        switch (admin_request)
+                        {
+                            case CommunicationData_AdminKickPlayer(Guid uuid):
+                                {
+                                    if (this[uuid]?.Player is Player p)
+                                    {
+                                        KickPlayer(p);
+
+                                        return CommunicationData_SuccessError.OK;
+                                    }
+                                    else
+                                        return new CommunicationData_SuccessError(false, $"Unable to find a player with the UUID {uuid:B}.");
+                                }
+                            case CommunicationData_AdminRemovePlayerFromGame(Guid uuid):
+                                {
+                                    if (this[uuid]?.Player is Player p)
+                                    {
+                                        RemovePlayerFromCurrentGame(p);
+
+                                        return CommunicationData_SuccessError.OK;
+                                    }
+                                    else
+                                        return new CommunicationData_SuccessError(false, $"Unable to find a player with the UUID {uuid:B}.");
+                                }
+                            case CommunicationData_AdminMakeAdmin(Guid uuid):
+                                {
+                                    if (this[uuid]?.Player is Player p)
+                                    {
+                                        ChangeAdminStatus(p, true);
+
+                                        return CommunicationData_SuccessError.OK;
+                                    }
+                                    else
+                                        return new CommunicationData_SuccessError(false, $"Unable to find a player with the UUID {uuid:B}.");
+                                }
+                            case CommunicationData_AdminMakeRegular(Guid uuid):
+                                {
+                                    if (this[uuid]?.Player is Player p)
+                                    {
+                                        ChangeAdminStatus(p, false);
+
+                                        return CommunicationData_SuccessError.OK;
+                                    }
+                                    else
+                                        return new CommunicationData_SuccessError(false, $"Unable to find a player with the UUID {uuid:B}.");
+                                }
+                            case CommunicationData_AdminGameReset:
+                                ResetNewGame();
+
+                                return CommunicationData_SuccessError.OK;
+                            case CommunicationData_AdminGameStart:
+                                IReadOnlyDictionary<Player, int>? res = CurrentGame?.FinishGame();
+
+                            case CommunicationData_AdminGameStop:
+                            default:
+                                return OnIncomingData?.Invoke(player, message, reply_requested);
+                        }
                 default:
                     return OnIncomingData?.Invoke(player, message, reply_requested);
             }
         }
 
-        private void OnWebsocketMessage(WebSocketConnection socket, Player player, Union<byte[], string> message)
+        #region ACTUAL GAME LOGIC
+
+        public void ResetNewGame()
         {
-            if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
-                _incoming.Enqueue((player, new(guid, message)));
-            else
-                $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
+            if (CurrentGame is Game current)
+            {
+                current.OnPlayerAdded -= CurrentGame_OnPlayerAdded;
+                current.OnPlayerRemoved -= CurrentGame_OnPlayerRemoved;
+                current.OnGameStateChanged -= CurrentGame_OnGameStateChanged;
+            }
+
+            CurrentGame = new();
+            CurrentGame.OnPlayerAdded += CurrentGame_OnPlayerAdded;
+            CurrentGame.OnPlayerRemoved += CurrentGame_OnPlayerRemoved;
+            CurrentGame.OnGameStateChanged += CurrentGame_OnGameStateChanged;
+
+            BroadcastCurrentGameState(CurrentGame);
         }
 
-        public void Notify(Player player, CommunicationData data)
+        public int TryAddAllConnectedPlayersToGame()
         {
-            $"Sending {data} to '{player}'...".Log(LogSource.Server);
+            int count = 0;
 
-            _outgoing.Enqueue((player, RawCommunicationPacket.SerializeData(Guid.Empty, data)));
+            if (CurrentGame is { CurrentGameState: GameState.Stopped })
+                foreach ((Player player, _) in _players)
+                    if (TryAddPlayerToGame(player))
+                        ++count;
+
+            return count;
         }
 
-        public void Notify(IEnumerable<Player> players, CommunicationData data) => players.Do(p => Notify(p, data));
+        public bool TryAddPlayerToGame(Player player) => CurrentGame?.TryAddPlayer(player, out _) ?? false;
 
-        public void NotifyAll(CommunicationData data) => Notify(_players.Keys, data);
+        public void RemovePlayerFromCurrentGame(Player player) => CurrentGame?.RemovePlayer(player);
 
-        public void NotifyAllExcept(Player player, CommunicationData data) => NotifyAllExcept(new[] { player }, data);
+        private void CurrentGame_OnGameStateChanged(Game game) => BroadcastCurrentGameState(game);
 
-        public void NotifyAllExcept(IEnumerable<Player> players, CommunicationData data) => Notify(_players.Keys.Except(players), data);
+        private void CurrentGame_OnPlayerRemoved(Game game, Player player) => NotifyGamePlayers(new CommunicationData_PlayerLeftGame(player.UUID));
 
-        public static GameServer CreateLocalGameServer(ServerConfig config)
+        private void CurrentGame_OnPlayerAdded(Game game, Player player) => NotifyGamePlayers(new CommunicationData_PlayerJoinedGame(player.UUID));
+
+        private void BroadcastCurrentGameState(Game game) => BroadcastCurrentGameState(game, _players.Keys);
+
+        private void BroadcastCurrentGameState(Game game, IEnumerable<Player> targets)
         {
-            GameServer server = new(new(config.address, config.port_tcp, config.port_web), config.server_name);
+            CommunicationData_GameUpdate.GameUpdatePlayerData[] players = game.Players.ToArray(p =>
+            {
+                int cols = p.Dimensions.columns;
+                int rows = p.Dimensions.rows;
+                Card?[] cards = new Card?[cols * rows];
+
+                for (int i = 0; i < cards.Length; ++i)
+                    cards[i] = p.GameField[i / cols, i % cols] switch { (Card c, true) => c, _ => null };
+
+                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard is { });
+            });
+
+            foreach (Player player in targets)
+            {
+                Notify(player, new CommunicationData_GameUpdate(
+                    game.DrawPile.Count,
+                    game.DiscardPile.Count,
+                    game.DiscardedCard,
+                    game.CurrentGameState,
+                    players,
+                    game.CurrentPlayerIndex,
+                    game.Players.FirstOrDefault(p => p.Player == player)?.CurrentlyDrawnCard,
+                    Game.MAX_PLAYERS
+                ));
+            }
+        }
+
+        #endregion
+
+        private static GameServer CreateLocalGameServer(ConnectionString connstr, ServerConfig config)
+        {
+            GameServer server = new(connstr, config.server_name);
 
             server.AddBannedNames(config.banned_names);
+            server.AdminUUIDs ??= new();
+
+            config?.admin_uuids?.Do(u => server.AdminUUIDs.Add(u));
 
             return server;
         }
 
-        public static async Task<GameServer> CreateGameServer(ServerConfig config)
-        {
-            GameServer server = new(await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_web), config.server_name);
+        public static GameServer CreateLocalGameServer(ServerConfig config) => CreateLocalGameServer(new(config.address, config.port_tcp, config.port_web), config);
 
-            server.AddBannedNames(config.banned_names);
-
-            return server;
-        }
+        public static async Task<GameServer> CreateGameServer(ServerConfig config) =>
+             CreateLocalGameServer(await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_web), config);
     }
 
-    public sealed record ServerConfig(string address, ushort port_tcp, ushort port_web, string server_name, string[] banned_names);
+    public sealed record ServerConfig(string address, ushort port_tcp, ushort port_web, string server_name, string[] banned_names, Guid[]? admin_uuids);
 
     public sealed class GameClient
         : IDisposable
@@ -597,8 +859,9 @@ namespace SKHEIJO
             _outgoing = new();
             _incoming = new();
 
+            IPEndPoint ep = new(IPAddress.Parse(ConnectionString.Address), ConnectionString.Ports.CSharp);
             TcpClient client = new();
-            client.Connect(ConnectionString.CSharpEndPoint);
+            client.Connect(ep);
 
             Stream = client.GetStream();
             Player = new(uuid)
@@ -615,7 +878,7 @@ namespace SKHEIJO
             Task.Factory.StartNew(CommunicationHandler);
             Task.Factory.StartNew(IncomingHandler);
 
-            $"Connected to '{ServerName}' via {ConnectionString.CSharpEndPoint}.".Info(LogSource.Client);
+            $"Connected to '{ServerName}' via {ep}.".Info(LogSource.Client);
         }
 
         private async Task CommunicationHandler()
