@@ -5,8 +5,8 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
         <meta http-equiv="X-UA-Compatible" content="chrome=1">
         <title>SKHEIJO</title>
-        <!-- <meta name="viewport" content="width=device-width, initial-scale=1"> -->
-        <meta name="viewport" content="width=800, user-scalable=yes">
+        <!-- <meta id="viewport" name="viewport" content="width=device-width, initial-scale=1"> -->
+        <meta id="viewport" name="viewport" content="user-scalable=yes">
         <link rel="shortcut icon" type="image/x-icon" href="img/favicon.ico"/>
         <link rel="icon" type="image/x-icon" href="img/favicon.ico"/>
         <link rel="stylesheet" type="text/css" href="css/style.css"/>
@@ -15,26 +15,19 @@
         <div id="main-container">
             <div id="usage-container">
                 <div id="usage-warning">
+                    <h1>WARNING!</h1>
                     <noscript>
-                        <h1>WARNING!</h1>
-                        <b>
-                            This site requires JavaScript to function properly.
-                            Please enable JavaScript in your browser settings.
-                        </b>
+                        This site requires JavaScript to function properly.
+                        Please enable JavaScript in your browser settings.
                     </noscript>
                     <div class="hidden">
-                        <h1>WARNING!</h1>
                         <p>
-                            <b>
-                                This site relies on your device to possess a screen with a minimum horizontal resolution of 500px.
-                                You are seeing this message because your device might not have a screen wide enough to display this page correctly.
-                                Please note that some features might suffer.
-                            </b>
+                            This site relies on your device to possess a screen with a minimum horizontal <b>AND</b> minimum vertical resolution of <span id="min-width">500</span> pixels.
+                            You are seeing this message because your device might not have a screen large enough to display this page correctly.
+                            Please note that some features might suffer and/or the page be unusable.
                         </p>
                         <p>
-                            <b>
-                                It is advisable to view this page on a tablet or computer, as these generally possess lager screens than mobile phones.
-                            </b>
+                            It is advisable to view this page on a tablet or computer, as these generally possess lager screens than mobile phones.
                         </p>
                         <button id="usage-warning-dismiss">Dismiss Warning</button>
                     </div>
@@ -56,7 +49,11 @@
                     </div>
                     <div id="login-failed">
                         <span>
-                            <h1>Connection failed</h1>
+                            <h1>
+                                <img src="img/failed.svg"/>
+                                &nbsp;
+                                Connection failed
+                            </h1>
                             <p>
                                 The connection code seems to be invalid or the game server could not be contacted.
                                 Please verify that you entered the code correctly and that your internet connection is stable.
@@ -118,17 +115,127 @@
             </div>
             <div id="game-container" class="hidden">
                 <div class="menu-bar">
-                    <div class="menu-item" data-icon="game"></div>
-                    <div class="menu-item" data-icon="share"></div>
-                    <div class="menu-item" data-icon="notifications"></div>
+                    <div class="menu-item" data-tab="game"></div>
+                    <div class="menu-item" data-tab="players"></div>
+                    <div class="menu-item" data-tab="share"></div>
+                    <div class="menu-item" data-tab="notifications"></div>
                     <div class="menu-spacer"></div>
-                    <div class="menu-item" data-icon="settings"></div>
-                    <div class="menu-item" data-icon="logout"></div>
+                    <div class="menu-item" data-tab="settings"></div>
+                    <div class="menu-item" data-tab="logout"></div>
+                </div>
+                <div class="menu-content-holder">
+                    <div id="main-game" class="menu-content hidden" data-tab="game">
+                        <div class="game-state">
+                            <table>
+                                <tr>
+                                    <td>
+                                        Current game state:
+                                    </td>
+                                    <td id="game-state-text"></td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Connected players:
+                                    </td>
+                                    <td id="game-player-count"></td>
+                                </tr>
+                            </table>
+                            <button id="game-join" class="hidden">Join Game</button>
+                            <button id="game-leave" class="hidden">Leave Game</button>
+                        </div>
+                        <div class="playing-field-holder">
+                            <div id="players" class="playing-field">
+                            </div>
+                        </div>
+                        <div class="ego-side">
+                            <div id="ego-player"></div>
+                            <div class="piles">
+                                <div id="draw-pile" class="pile" data-annotation="draw pile"></div>
+                                <div id="discard-pile" class="pile" data-annotation="discard pile"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="players">
+                        <h1>Player overview <span class="admin-only">and user management</span></h1>
+                        <p>
+                            The following list enumerates all players connected to the current server.
+                            Note that not all players who are connected to the servers are part of the current game.
+                            This occures e.g. when a player connects to the server <i>after</i> a game has been started.
+                            Administrators are marked with a badge (<img src="img/admin.svg" style="height: .8em;"/>).
+                        </p>
+                        <p>
+                            <span id="player-count">0</span> player(s) connected:
+                        </p>
+                        <div id="player-list"></div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="notifications">
+                        <h1>Notification Overview</h1>
+                        <div id="notification-list"></div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="logout">
+                        <h3>Are you sure that you want to logout?</h3>
+                        <p>
+                            <button id="logout-button">Yes. Log me out.</button>
+                        </p>
+                        <br/>
+                        <p>
+                            Press the following button if you want to be logged out <b><i>and</i></b> your identity removed.
+                        </p>
+                        <p>
+                            <b>WARNING:</b>
+                            The removal of your identity will reset your name and your administrator rights (should you possess any).
+                        </p>
+                        <p>
+                            <button id="reset-logout-button">Reset identity and log me out.</button>
+                        </p>
+                    </div>
+                    <div class="menu-content hidden" data-tab="share">
+                        <h1>Share this game</h1>
+                        <p>
+                            In order to share a this game with somebody, use the share buttons or copy the following link:
+                        </p>
+                        <p style="font-size: 1.2em;">
+                            <a id="share-url" href></a>
+                        </p>
+                        <div id="share-container">
+                            <button class="share" data-service="whatsapp">WhatsApp</button>
+                            <button class="share" data-service="twitter">Twitter</button>
+                            <button class="share" data-service="facebook">Facebook</button>
+                            <button class="share" data-service="threema">Threema</button>
+                            <button class="share" data-service="reddit">Reddit</button>
+                            <button class="share" data-service="linkedin">LinkedIn</button>
+                            <button class="share" data-service="tumblr">Tumblr</button>
+                            <button class="share" data-service="pinterest">Pinterest</button>
+                            <button class="share" data-service="telegram">Telegram</button>
+                            <button class="share" data-service="vk">ВКонта́кте</button>
+                            <button class="share" data-service="skype">Skype</button>
+                            <button class="share" data-service="sms">SMS</button>
+                            <button class="share" data-service="email">E-Mail</button>
+                            <button class="share" data-service="native">Share ...</button>
+                        </div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="settings">
+                        SETTINGS
+                    </div>
                 </div>
             </div>
         </div>
-        <script type="text/javascript" language="javascript" src="js/jquery.js"></script>
-        <script type="text/javascript" language="javascript" src="js/uuid.js"></script>
-        <script type="text/javascript" language="javascript" src="js/script.js"></script>
+        <script type="text/javascript" src="js/jquery.js"></script>
+        <script type="text/javascript" src="js/uuid.js"></script>
+        <script type="text/javascript" src="js/script.js"></script>
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-X58DTKP1DB"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+
+            function gtag() { dataLayer.push(arguments); }
+
+            gtag('js', new Date());
+            gtag('config', 'G-X58DTKP1DB');
+        </script>
     </body>
 </html>
+<!--
+TODO:
+    - auto login
+    -
+-->
