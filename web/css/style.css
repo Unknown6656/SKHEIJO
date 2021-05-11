@@ -59,8 +59,8 @@
     opacity: 0;
 }
 
-.admin-only,
-.admin-only * {
+.admin-only:not(.hidden),
+.admin-only:not(.hidden) * {
     display: none;
 }
 
@@ -217,8 +217,7 @@ body.logged-in {
 }
 
 #login-container,
-#username-container,
-#usage-container {
+#username-container {
     justify-content: center;
     align-items: center;
     display: flex;
@@ -425,11 +424,9 @@ body.logged-in {
     background-image: url('../img/menu-logout.svg');
 }
 
-#main-container.admin .menu-item[data-tab="players"]::after,
-#main-container.admin .menu-item[data-tab="settings"]::after {
-    background-image: url('../img/admin.svg');
-    background-position: center;
+.menu-item::after {
     background-color: var(--color-bg);
+    background-repeat: no-repeat;
     background-size: contain;
     position: relative;
     display: block;
@@ -437,19 +434,28 @@ body.logged-in {
     right: -15px;
     height: 15px;
     width: 15px;
-    content: '';
 }
 
-#main-container.admin .menu-item[data-tab="players"]:hover::after,
-#main-container.admin .menu-item[data-tab="settings"]:hover::after {
+.menu-item:hover::after {
     background-color: var(--color-bg-hover);
 }
 
-#main-container.admin .menu-item[data-tab="players"]:active::after,
-#main-container.admin .menu-item[data-tab="players"].active::after,
-#main-container.admin .menu-item[data-tab="settings"]:active::after,
-#main-container.admin .menu-item[data-tab="settings"].active::after {
+.menu-item:active::after,
+.menu-item.active::after {
     background-color: var(--color-bg-active);
+}
+
+.menu-item[data-tab="notifications"][data-count]::after {
+    content: '(' attr(data-count) ')';
+    font-weight: bold;
+    font-size: .8em;
+}
+
+#main-container.admin .menu-item[data-tab="players"]::after,
+#main-container.admin .menu-item[data-tab="settings"]::after {
+    background-image: url('../img/admin.svg');
+    background-position: center;
+    content: '';
 }
 
 .menu-content-holder {
@@ -470,6 +476,12 @@ body.logged-in {
     word-break: normal;
     word-wrap: normal;
     padding: 20px;
+    height: 100%;
+}
+
+.menu-content[data-tab="notifications"] {
+    flex-direction: column;
+    display: flex;
 }
 
 span.player-name {
@@ -495,6 +507,12 @@ span.player-name[data-is-me]::after {
     padding: 1.5px 3px;
     font-size: .7em;
     content: 'You';
+}
+
+.notification-list-wrapper {
+    position: relative;
+    overflow-y: auto;
+    height: 100%;
 }
 
 #player-list,
@@ -574,6 +592,8 @@ span.player-name[data-is-me]::after {
 }
 
 #notification-list td.time {
+    padding-right: 10px;
+    text-align: right;
     min-width: 140px;
 }
 

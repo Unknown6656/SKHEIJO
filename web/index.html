@@ -22,7 +22,7 @@
                     </noscript>
                     <div data-warning="version" class="hidden">
                         <p>
-                            This site relies on modern web browser features such as ECMAScript 2017, flexboxes, etc. to provide a seamless experience.
+                            This site relies on modern web browser features such as ECMAScript 2017, modern CSS, async/await, flexboxes, etc. to provide a seamless experience.
                             <br/>
                             You seem to access this site from a older browser (<span id="current-browser"></span>) which only partially supports these featrues.
                             As such, it is advisable to switch to newer browser versions.
@@ -191,7 +191,14 @@
                     </div>
                     <div class="menu-content hidden" data-tab="notifications">
                         <h1>Notification Overview</h1>
-                        <div id="notification-list"></div>
+                        <p>
+                            The following list contains all notifications received from the server and other players in chronological order.
+                            The most recent notification can be found at the top, while older notifications can be found further down the list.
+                            Critical notifications or error warnings are prefixed with a circled exclamation mark (<img src="img/notifications-failure.svg" style="height: .8em;"/>).
+                        </p>
+                        <div class="notification-list-wrapper">
+                            <div id="notification-list"></div>
+                        </div>
                     </div>
                     <div class="menu-content hidden" data-tab="logout">
                         <h3>Are you sure that you want to logout?</h3>
@@ -236,11 +243,19 @@
                         </div>
                     </div>
                     <div class="menu-content hidden" data-tab="settings">
-                        SETTINGS
+                        <h1>Settings</h1>
+                        <p>
+                            These are not the droids you are looking for.
+                            <br/>
+                            Move along.
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
+        <script>
+            var on_page_loaded = undefined;
+        </script>
         <script type="text/javascript" src="js/jquery.js"></script>
         <script type="text/javascript" src="js/uuid.js"></script>
         <script type="text/javascript" src="js/browser.js"></script>
