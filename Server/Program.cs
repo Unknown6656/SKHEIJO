@@ -1,14 +1,14 @@
-﻿using System;
+﻿using System.Text.RegularExpressions;
 using System.Collections.Generic;
-using System.IO;
+using System.Threading.Tasks;
+using System.Reflection;
 using System.Linq;
 using System.Net;
-using System.Numerics;
-using System.Reflection;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using System.IO;
+using System;
+
 using SKHEIJO;
+
 using Unknown6656.Common;
 using Unknown6656.IO;
 
@@ -89,7 +89,7 @@ v <player>              removes <player> from the game
 l                       lists game players
 ll                      lists server players
 d                       reset game and deal cards
-
+g                       displays game information
 
 vv                      toggles verbose output on/off
 q                       stop server
@@ -110,6 +110,8 @@ q                       stop server
                     server.CurrentGame?.Players.Select(p => "\n" + p).StringJoin("\n").Info(LogSource.Server);
                 else if (cmd.ToLowerInvariant() == "d")
                     server.CurrentGame?.DealCardsAndRestart();
+                else if (cmd.ToLowerInvariant() == "g")
+                    server.CurrentGame?.ToString().Info(LogSource.Server);
                 else
                     cmd.Match(new Dictionary<Regex, Action<Match>>()
                     {
@@ -130,7 +132,7 @@ q                       stop server
                         [R_KICK] = m =>
                         {
                             if (server.TryResolvePlayer(m.Groups["p"].Value) is Player player)
-                                server.KickPlayer(player);
+                                server.KickPlayer(player).GetAwaiter().GetResult();
                             else
                                 $"Unknown player '{m.Groups["p"]}'.".Err(LogSource.Server);
                         },
