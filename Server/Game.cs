@@ -330,15 +330,17 @@ namespace SKHEIJO
                 return false;
         }
 
-        public IReadOnlyDictionary<Player, int> FinishGame()
+        public (Player Player, int Points)[] GetCurrentLeaderBoard() => (from p in Players
+                                                                         let player = p.Player
+                                                                         let points = p.VisiblePoints * (player.Equals(_final_round_initiator) ? 2 : 1)
+                                                                         orderby points ascending
+                                                                         select (player, points)).ToArray();
+
+        public (Player Player, int Points)[] FinishGame()
         {
             CurrentGameState = GameState.Finished;
 
-            return (from p in Players
-                    let player = p.Player
-                    let points = p.VisiblePoints * (player.Equals(_final_round_initiator) ? 2 : 1)
-                    orderby points ascending
-                    select (player, points)).ToDictionary();
+            return GetCurrentLeaderBoard();
         }
 
     }
