@@ -238,9 +238,20 @@ body.logged-in {
 
 #usage-warning {
     background-color: lightcoral;
-    color: firebrick;
-    font-size: 1.2em;
+    color: darkred;
     z-index: 1000;
+}
+
+#usage-container hr {
+    border: 0px solid transparent;
+    border-bottom: 1px solid darkred;
+}
+
+#usage-warning-dismiss {
+    border: 1px solid darkred;
+    background-color: pink;
+    font-weight: bold;
+    color: darkred;
 }
 
 #usage-warning .hidden {
