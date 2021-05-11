@@ -15,6 +15,9 @@ const TYPE_JOIN_REQUEST = 'GameJoinRequest';
 const TYPE_LEAVE_REQUEST = 'GameLeaveRequest';
 const TYPE_NAME_REQUEST = 'PlayerNameChangeRequest';
 const TYPE_GAME_UPDATE = 'GameUpdate';
+const TYPE_GAME_START = 'AdminGameStart';
+const TYPE_GAME_STOP = 'AdminGameStop';
+const TYPE_GAME_RESET = 'AdminGameReset';
 const TYPE_KICK_PLAYER = 'AdminKickPlayer';
 const TYPE_REMOVE_GAME_PLAYER = 'AdminRemovePlayerFromGame';
 const TYPE_MAKE_ADMIN = 'AdminMakeAdmin';
@@ -80,32 +83,58 @@ function on_page_resized()
 
 function on_page_loaded()
 {
-    // TODO : check for outdated browser version !!!
-
+    let show_warning = false;
     const min_screen_size = window.getComputedStyle(document.body).getPropertyValue('--min-width');
 
     on_page_resized();
 
-    if (!window.matchMedia(`(max-device-width: ${min_screen_size})`).matches &&
-        !window.matchMedia(`(max-device-height: ${min_screen_size})`).matches)
+    $('#min-width').html(min_screen_size);
+
+    if (window.matchMedia(`(max-device-width: ${min_screen_size})`).matches ||
+        window.matchMedia(`(max-device-height: ${min_screen_size})`).matches)
     {
-        $('#min-width').html(min_screen_size);
-        $('#usage-container').remove();
-        $('#login-container').removeClass('hidden');
+        const min_height = parseInt(min_screen_size.replace('px', ''));
+
+        if (screen.width < min_height)
+            viewport.attr('content', `${viewport.attr('content')}, height=${min_height}`);
+
+        $('#usage-warning [data-warning="size"]').removeClass('hidden');
+
+        show_warning = true;
     }
-    else
+
+    if (!Browser.current.isSupported())
     {
-        $('#usage-warning .hidden').removeClass('hidden');
+        let supported = '';
+
+        for (let b in UNSUPPORTED_BROWSERS)
+            supported += `
+                <tr>
+                    <td>${b}:</td>
+                    <td>&gt; ${UNSUPPORTED_BROWSERS[b]}</td>
+                </tr>
+            `;
+
+        $('#usage-warning [data-warning="version"]').removeClass('hidden');
+        $('#current-browser').html(Browser.current.toString());
+        $('#supported-browsers').html(supported);
+
+        show_warning = true;
+    }
+
+    if (show_warning)
+    {
+        $('#usage-warning-dismiss').removeClass('hidden');
         $('#usage-warning-dismiss').click(function()
         {
             $('#usage-container').remove();
             $('#login-container').removeClass('hidden');
         });
-
-        const min_height = parseInt(min_screen_size.replace('px', ''));
-
-        if (screen.width < min_height)
-            viewport.attr('content', `${viewport.attr('content')}, height=${min_height}`);
+    }
+    else
+    {
+        $('#usage-container').remove();
+        $('#login-container').removeClass('hidden');
     }
 
     $('#login-string').val(url_conn_string);
@@ -498,8 +527,10 @@ function update_game_field(data)
         `);
     }
 
-    $(data.State == GAMESTATE_FINISHED ? '#admin-reset-game' :
-      data.State == GAMESTATE_STOPPED ? '#admin-start-game' : '#admin-stop-game').removeClass('hidden');
+    if (data.State != GAMESTATE_STOPPED)
+        $(data.State == GAMESTATE_FINISHED ? '#admin-reset-game' : '#admin-stop-game').removeClass('hidden');
+    else if (data.Players.length > 1)
+        $('#admin-start-game').removeClass('hidden');
 }
 
 function hide_notification()
@@ -762,6 +793,11 @@ $('#game-leave').click(function()
     server_send_command(TYPE_LEAVE_REQUEST, { });
 });
 
+$('#admin-start-game').click(() => server_send_command(TYPE_GAME_START, { }));
+
+$('#admin-stop-game').click(() => server_send_command(TYPE_GAME_STOP, { }));
+
+$('#admin-reset-game').click(() => server_send_command(TYPE_GAME_RESET, { }));
 
 
 

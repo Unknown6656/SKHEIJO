@@ -20,17 +20,35 @@
                         This site requires JavaScript to function properly.
                         Please enable JavaScript in your browser settings.
                     </noscript>
-                    <div class="hidden">
+                    <div data-warning="version" class="hidden">
+                        <p>
+                            This site relies on modern web browser features such as ECMAScript 2017, flexboxes, etc. to provide a seamless experience.
+                            <br/>
+                            You seem to access this site from a older browser (<span id="current-browser"></span>) which only partially supports these featrues.
+                            As such, it is advisable to switch to newer browser versions.
+                            Please find an enumeration of supported browser versions below:
+                        </p>
+                        <table id="supported-browsers">
+                        </table>
+                        <hr/>
+                    </div>
+                    <div data-warning="size" class="hidden">
                         <p>
                             This site relies on your device to possess a screen with a minimum horizontal <b>AND</b> minimum vertical resolution of <span id="min-width">500</span> pixels.
+                            </br>
                             You are seeing this message because your device might not have a screen large enough to display this page correctly.
                             Please note that some features might suffer and/or the page be unusable.
                         </p>
                         <p>
                             It is advisable to view this page on a tablet or computer, as these generally possess lager screens than mobile phones.
                         </p>
-                        <button id="usage-warning-dismiss">Dismiss Warning</button>
+                        <hr/>
                     </div>
+                    <button id="usage-warning-dismiss" class="hidden">
+                        I KNOW WHAT I AM DOING.
+                        &nbsp;
+                        DISMISS THE WARNING.
+                    </button>
                 </div>
             </div>
             <div id="notification-container">
@@ -225,6 +243,7 @@
         </div>
         <script type="text/javascript" src="js/jquery.js"></script>
         <script type="text/javascript" src="js/uuid.js"></script>
+        <script type="text/javascript" src="js/browser.js"></script>
         <script type="text/javascript" src="js/script.js"></script>
         <script async src="https://www.googletagmanager.com/gtag/js?id=G-X58DTKP1DB"></script>
         <script>
