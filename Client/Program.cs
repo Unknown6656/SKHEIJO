@@ -3,6 +3,9 @@ using System;
 
 using Unknown6656.Common;
 using System.Windows;
+using Unknown6656.IO;
+using Unknown6656.Imaging;
+using Unknown6656.Imaging.Effects;
 
 namespace SKHEIJO
 {
@@ -11,6 +14,9 @@ namespace SKHEIJO
         [STAThread]
         public static int Main(string[] argv)
         {
+            //From.File(@"L:\Projects.VisualStudio\SKHEIJO\artwork\raw\heikki1.jpeg").ToBitmap().ToARGB32().ApplyEffect(new HexagonalPixelation(40)).Save(
+            //    @"L:\Projects.VisualStudio\SKHEIJO\artwork\hex.png");
+
             Logger.Start();
 
             $"Arguments({argv.Length}): \"{argv.StringJoin("\", \"")}\"".Log(LogSource.UI);
