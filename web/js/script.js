@@ -31,7 +31,7 @@ const GAMESTATE_FINISHED = 3;
 const STORAGE_CONN_STRING = 'conn-string';
 const STORAGE_USER_NAME = 'user-name';
 const STORAGE_USER_UUID = 'user-uuid';
-const SERVER_TIMEOUT = 30_000;
+const SERVER_TIMEOUT = 20_000; // 20sec timeout
 
 
 let notifications = [ ];
@@ -44,6 +44,7 @@ let output_loop = undefined;
 let incoming_queue = undefined;
 let outgoing_queue = undefined;
 let server_conversations = { };
+let notification_backlog = [ ];
 let notification_timeout = undefined;
 
 let user_uuid = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
@@ -70,78 +71,27 @@ if (url_conn_string == null)
     url_conn_string = window.localStorage.getItem(STORAGE_CONN_STRING);
 
 
-
-const viewport = $("#viewport");
-
-function on_page_resized()
+on_page_loaded = () =>
 {
-    const attr = viewport.attr('content');
-    const W800 = ',width=800';
-
-    viewport.attr('content', screen.width < 800 ? attr + W800 : attr.replace(W800, ''));
-}
-
-function on_page_loaded()
-{
-    let show_warning = false;
-    const min_screen_size = window.getComputedStyle(document.body).getPropertyValue('--min-width');
-
-    on_page_resized();
-
-    $('#min-width').html(min_screen_size);
-
-    if (window.matchMedia(`(max-device-width: ${min_screen_size})`).matches ||
-        window.matchMedia(`(max-device-height: ${min_screen_size})`).matches)
-    {
-        const min_height = parseInt(min_screen_size.replace('px', ''));
-
-        if (screen.width < min_height)
-            viewport.attr('content', `${viewport.attr('content')}, height=${min_height}`);
-
-        $('#usage-warning [data-warning="size"]').removeClass('hidden');
-
-        show_warning = true;
-    }
-
-    if (!Browser.current.isSupported())
-    {
-        let supported = '';
-
-        for (let b in UNSUPPORTED_BROWSERS)
-            supported += `
-                <tr>
-                    <td>${b}:</td>
-                    <td>&gt; ${UNSUPPORTED_BROWSERS[b]}</td>
-                </tr>
-            `;
-
-        $('#usage-warning [data-warning="version"]').removeClass('hidden');
-        $('#current-browser').html(Browser.current.toString());
-        $('#supported-browsers').html(supported);
-
-        show_warning = true;
-    }
-
-    if (show_warning)
-    {
-        $('#usage-warning-dismiss').removeClass('hidden');
-        $('#usage-warning-dismiss').click(function()
-        {
-            $('#usage-container').remove();
-            $('#login-container').removeClass('hidden');
-        });
-    }
-    else
-    {
-        $('#usage-container').remove();
-        $('#login-container').removeClass('hidden');
-    }
-
     $('#login-string').val(url_conn_string);
     $('#login-string').focus();
     $('#login-string').select();
     on_login_input_changed();
+    start_notification_loop();
+    on_page_resized();
+
+    window.addEventListener('resize', on_page_resized);
 }
+
+function on_page_resized()
+{
+    const attr = $('#viewport').attr('content');
+    const W800 = ',width=800';
+
+    $('#viewport').attr('content', screen.width < 800 ? attr + W800 : attr.replace(W800, ''));
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function random(max)
 {
@@ -363,40 +313,89 @@ function process_server_message(type, data)
 
 function show_notification(content, success = true)
 {
-    if (notification_timeout !== undefined)
-        clearTimeout(notification_timeout);
+    const notf = { content: content, success: success, time: Date.now() };
 
-    notification_timeout = undefined;
-    notifications.push({ content: content, success: success, time: Date.now() });
-
-    if (success)
-        $('#notification-container').removeClass('error');
-    else
-        $('#notification-container').addClass('error');
-
-    $('#notification-content').html(content);
-    $('#notification-container').addClass('visible');
-
-    notification_timeout = setTimeout(hide_notification, 4000);
+    notification_backlog.push(notf);
+    notifications.push(notf);
 
     update_notification_list();
 }
 
+function start_notification_loop()
+{
+    update_notification_list();
+    setTimeout(async () =>
+    {
+        while (true)
+        {
+            if (notification_backlog != undefined)
+                while (notification_backlog.length > 0)
+                {
+                    while (notification_timeout != undefined)
+                        await sleep(250);
+
+                    const notf = notification_backlog.shift();
+
+                    if (notf.success)
+                        $('#notification-container').removeClass('error');
+                    else
+                        $('#notification-container').addClass('error');
+
+                    $('#notification-content').html(notf.content);
+                    $('#notification-container').addClass('visible');
+
+                    notification_timeout = setTimeout(hide_notification, 4000);
+                }
+
+            await sleep(150);
+        }
+    }, 0);
+}
+
+function hide_notification()
+{
+    if (notification_timeout !== undefined)
+        clearTimeout(notification_timeout);
+
+    notification_timeout = undefined;
+
+    $('#notification-container').removeClass('visible');
+}
+
 function update_notification_list()
 {
-    let html = '<table>';
+    let html = '';
 
-    for (const item of notifications)
-        html += `
-        <tr>
-            <td class="status ${item.success ? '' : 'failure'}"></td>
-            <td class="content">${item.content}</td>
-            <td class="time">${new Date(item.time).toISOString().slice(0, 19).replace('T', ' ')}</td>
-        </tr>`;
+    if (notifications.length == 0)
+        html = '<i>You currently do not seem to have any notifications.</i>';
+    else
+    {
+        for (const item of notifications)
+            html = `
+                <tr>
+                    <td class="status ${item.success ? '' : 'failure'}"></td>
+                    <td class="content">${item.content}</td>
+                    <td class="time">${new Date(item.time).toISOString().slice(0, 19).replace('T', ' ')}</td>
+                </tr>
+            ${html}`;
 
-    html += '</table>';
+        html = `
+            <table>
+                <tr id="last-notification"></tr>
+                ${html}
+            </table>
+        `;
+    }
 
     $('#notification-list').html(html);
+
+    if (notifications.length > 0)
+    {
+        $('#last-notification')[0].scrollIntoView();
+        $('.menu-item[data-tab="notifications"]').attr('data-count', notifications.length);
+    }
+    else
+        $('.menu-item[data-tab="notifications"]').removeAttr('data-count');
 }
 
 function user_to_html(uuid)
@@ -531,16 +530,6 @@ function update_game_field(data)
         $(data.State == GAMESTATE_FINISHED ? '#admin-reset-game' : '#admin-stop-game').removeClass('hidden');
     else if (data.Players.length > 1)
         $('#admin-start-game').removeClass('hidden');
-}
-
-function hide_notification()
-{
-    if (notification_timeout !== undefined)
-        clearTimeout(notification_timeout);
-
-    notification_timeout = undefined;
-
-    $('#notification-container').removeClass('visible');
 }
 
 function on_login_input_changed()
@@ -826,6 +815,5 @@ if (navigator.share)
     }));
 
 
-on_page_loaded();
 
 
