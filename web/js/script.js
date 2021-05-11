@@ -405,15 +405,11 @@ function card_to_html(card)
 
 function update_game_field(data)
 {
-    $('#players, #ego-player').html('');
+    $('#game-player-count, #draw-pile, #discard-pile, #game-state-text, #players, #ego-player').html('');
+    $('#game-leave, #game-join, #admin-start-game, #admin-stop-game, #admin-reset-game').addClass('hidden');
 
     if (data == null || data == undefined)
-    {
-        $('#game-player-count, #draw-pile, #discard-pile, #game-state-text').html('');
-        $('#game-leave, #game-join').addClass('hidden');
-
         return;
-    }
 
     const divs = [];
     let index = 0;
@@ -457,7 +453,9 @@ function update_game_field(data)
                     &nbsp;
                     Points: ${points}
                     <br/>
-                    <span class="on-current">It is currently ${you ? 'your' : user_name + "'s"} turn to play.</span>
+                    <span class="on-current">
+                        It is currently ${you ? 'your' : user_name + "'s"} turn to play.
+                    </span>
                 </div>
             </div>
         `;
@@ -485,26 +483,23 @@ function update_game_field(data)
                     : data.State == GAMESTATE_FINISHED ? 'Finished' : 'Unknown';
 
     $('#game-state-text').html(state_txt);
-    $('#game-join').addClass('hidden');
 
     if (joined)
         $('#game-leave').removeClass('hidden');
-    else
+    else if (data.Players.length < data.MaxPlayers && data.State == GAMESTATE_STOPPED)
     {
-        $('#game-leave').addClass('hidden');
-
-        if (data.Players.length < data.MaxPlayers && data.State == GAMESTATE_STOPPED)
-        {
-            $('#game-join').removeClass('hidden');
-            $('#ego-player').html(`
-                <p>
-                    You are currently observing a (stopped) game.
-                    <br/>
-                    Use the [JOIN GAME]-button to join the game.
-                </p>
-            `);
-        }
+        $('#game-join').removeClass('hidden');
+        $('#ego-player').html(`
+            <p>
+                You are currently observing a (stopped) game.
+                <br/>
+                Use the [JOIN GAME]-button to join the game.
+            </p>
+        `);
     }
+
+    $(data.State == GAMESTATE_FINISHED ? '#admin-reset-game' :
+      data.State == GAMESTATE_STOPPED ? '#admin-start-game' : '#admin-stop-game').removeClass('hidden');
 }
 
 function hide_notification()
@@ -628,6 +623,13 @@ function upate_user_info(uuid)
             delete user_cache[uuid];
         else
         {
+            if (user_cache[uuid] != undefined && uuid == user_uuid)
+                if (!user_cache[uuid].admin && response.IsAdmin)
+                    show_notification('You have been elevated to administrator.');
+                else if (user_cache[uuid].admin && !response.IsAdmin)
+                    show_notification('You have been removed as an administrator.', false);
+
+
             user_cache[uuid] = {
                 name: response.Name,
                 admin: response.IsAdmin,
