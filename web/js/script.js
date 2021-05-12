@@ -22,6 +22,20 @@ const TYPE_KICK_PLAYER = 'AdminKickPlayer';
 const TYPE_REMOVE_GAME_PLAYER = 'AdminRemovePlayerFromGame';
 const TYPE_MAKE_ADMIN = 'AdminMakeAdmin';
 const TYPE_MAKE_REGULAR = 'AdminMakeRegular';
+const TYPE_SERVER_STOP = 'AdminServerStop';
+const TYPE_GAME_DRAW = 'GameDraw';
+const TYPE_GAME_SWAP = 'GameSwap';
+const TYPE_GAME_DISCARD = 'GameDiscard';
+const TYPE_GAME_UNCOVER = 'GameUncover';
+const TYPE_PLAYER_WIN = 'PlayerWin';
+const TYPE_LEADERBOARD = 'LeaderBoard';
+const WAITINGFOR_DRAW = 0;
+const WAITINGFOR_PLAY = 1;
+const WAITINGFOR_DISCARD = 2;
+const WAITINGFOR_UNCOVER = 3;
+const WAITINGFOR_NEXT = 4;
+const SOURCE_DRAW_PILE = 0;
+const SOURCE_DISCARD_PILE = 1;
 const DISCONNECT_REASON_SHUTDOWN = 0;
 const DISCONNECT_REASON_KICK = 1;
 const GAMESTATE_STOPPED = 0;
@@ -33,6 +47,9 @@ const STORAGE_USER_NAME = 'user-name';
 const STORAGE_USER_UUID = 'user-uuid';
 const SERVER_TIMEOUT = 20_000; // 20sec timeout
 
+
+let confetti_ego = confetti.create($('#confetti-ego')[0], { resize: true });
+let confetti_other = undefined;
 
 let notifications = [ ];
 let user_cache = { };
@@ -47,7 +64,7 @@ let server_conversations = { };
 let notification_backlog = [ ];
 let notification_timeout = undefined;
 
-let user_uuid = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
+let user_uuid_obj = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
 let user_name = window.localStorage.getItem(STORAGE_USER_NAME);
 let first_time = false;
 
@@ -58,11 +75,16 @@ if (user_name == null)
     window.localStorage.setItem(STORAGE_USER_NAME, user_name);
 }
 
-if (user_uuid == null)
+if (user_uuid_obj == null)
 {
-    user_uuid = UUID.New();
-    window.localStorage.setItem(STORAGE_USER_UUID, user_uuid);
+    user_uuid_obj = UUID.New();
+    window.localStorage.setItem(STORAGE_USER_UUID, user_uuid_obj);
 }
+
+let user_uuid = user_uuid_obj.toString();
+
+$('#user-uuid').val(`{${user_uuid}}`);
+
 
 let current_url = new URL(window.location.href);
 let url_conn_string = current_url.searchParams.get("code");
@@ -147,8 +169,6 @@ function socket_error()
 
 function socket_close()
 {
-    on_server_leaving();
-
     socket = undefined;
     incoming_queue = undefined;
     outgoing_queue = undefined;
@@ -162,7 +182,7 @@ function socket_close()
     $('#login-container').removeClass('hidden');
     $('#username-container').addClass('hidden');
     $('#game-container').addClass('hidden');
-    $('body').removeClass('logged-in');
+    $('body').removeClass('ready');
 }
 
 function socket_open()
@@ -173,7 +193,7 @@ function socket_open()
     update_game_field(null);
 
     socket.send(new Blob([
-        user_uuid.bytes
+        user_uuid_obj.bytes
     ]));
     input_loop = setInterval(() =>
     {
@@ -268,12 +288,16 @@ function process_server_message(type, data)
     }
     if (type == TYPE_PLAYER_JOINED_SERVER)
     {
-        show_notification(data.UUID == user_uuid ? 'You have joined the server.' : 'A player has joined the server.');
+        if (data.UUID != user_uuid)
+            show_notification('A player has joined the server.');
+
         upate_user_info(data.UUID);
     }
     else if (type == TYPE_PLAYER_LEFT_SERVER)
     {
-        show_notification(data.UUID == user_uuid ? 'You have left the server.' : 'A player has left the server.');
+        if (data.UUID != user_uuid)
+            show_notification('A player has left the server.');
+
         upate_user_info(data.UUID);
     }
     else if (type == TYPE_PLAYER_JOINED_GAME)
@@ -307,8 +331,12 @@ function process_server_message(type, data)
         );
     else if (type == TYPE_NOTIFICATION)
         show_notification(data.Message, true);
+    else if (type == TYPE_LEADERBOARD)
+        update_leaderboard(data.LeaderBoard);
+    else if (type == TYPE_PLAYER_WIN)
+        show_celebration(data.UUID);
     else
-        console.log([type, data]);
+        console.log('unprocessed:', type, data);
 }
 
 function show_notification(content, success = true)
@@ -398,6 +426,47 @@ function update_notification_list()
         $('.menu-item[data-tab="notifications"]').removeAttr('data-count');
 }
 
+function update_leaderboard(leaderboard)
+{
+    // Todo : leaderboard tab, leading message (?), lead loosing message (?)
+}
+
+function show_celebration(uuid)
+{
+    $('.menu-item[data-tab="game"]').click();
+
+    if (uuid == user_uuid)
+        show_notification('YOU HAVE WON THE GAME!<br/>CONGRATULATIONS!!');
+    else
+        show_notification(`${user_to_html(uuid)} has won the game! Can you beat them next time?`);
+
+    setTimeout(() =>
+    {
+        const conf = uuid == user_uuid ? confetti_ego : confetti_other;
+
+        if (conf != undefined)
+        {
+            conf({
+                particleCount: 1000,
+                spread: 90,
+                origin: { y: 1 }
+            });
+            conf({
+                particleCount: 800,
+                spread: 70,
+                angle: -135,
+                origin: { y: 0, x: 1 }
+            });
+            conf({
+                particleCount: 800,
+                spread: 70,
+                angle: -45,
+                origin: { y: 0, x: 0 }
+            });
+        }
+    }, 150);
+}
+
 function user_to_html(uuid)
 {
     const user = user_cache[uuid];
@@ -420,7 +489,8 @@ function user_to_html(uuid)
     `;
 }
 
-function card_to_html(card)
+/* 'pile' has the values 'user-x-x', 'draw', 'discard', or 'current'. */
+function card_to_html(card, pile)
 {
     if (card == undefined)
         card = null;
@@ -428,12 +498,27 @@ function card_to_html(card)
     if (card != null && card.hasOwnProperty('Value'))
         card = card.Value;
 
-    return `<div class="card" data-value="${card}">${card == null ? '' : `<span>${card}</span>`}</div>`;
+    return `<div class="card" data-value="${card}" data-pile="${pile}">${card == null ? '' : `<span>${card}</span>`}</div>`;
 };
 
 function update_game_field(data)
 {
-    $('#game-player-count, #draw-pile, #discard-pile, #game-state-text, #players, #ego-player').html('');
+    confetti_other = undefined;
+
+    const cls_dragging = 'drag-active';
+    const cls_dropped = 'dropped';
+    const cls_dragover = 'drag-over';
+    const cls_dropallowed = 'drop-allowed';
+    const cls_dragallowed = 'drag-allowed';
+    const cls_clickable = 'click-allowed';
+
+    $('.card,.pile').removeClass(cls_dragging)
+                    .removeClass(cls_dropped)
+                    .removeClass(cls_dragover)
+                    .removeClass(cls_dropallowed)
+                    .removeClass(cls_dragallowed)
+                    .removeClass(cls_clickable);
+    $('#game-player-count, #draw-pile, #discard-pile, #game-state-text, #players, #ego-player, #instructions').html('');
     $('#game-leave, #game-join, #admin-start-game, #admin-stop-game, #admin-reset-game').addClass('hidden');
 
     if (data == null || data == undefined)
@@ -452,34 +537,55 @@ function update_game_field(data)
 
         for (const card of player.Cards)
         {
-            if (card_index % player.Columns == 0)
+            const r = Math.floor(card_index / player.Columns);
+            const c = card_index % player.Columns;
+            const pile = `user-${r}-${c}`;
+
+            if (c == 0)
                 row += '<tr>';
 
-            row += `<td class="pile" data-row="${Math.floor(card_index / player.Columns)}" data-col="${card_index % player.Columns}">${card_to_html(card)}</td>`;
+            row += `<td class="pile" data-row="${r}" data-col="${c}" data-pile="${pile}">${card_to_html(card, pile)}</td>`;
 
             if ((card_index + 1) % player.Columns == 0)
                 row += '</tr>';
 
             if (card != null)
-                points += card;
+                points += card.Value;
 
             ++card_index;
         }
 
         const user_html = user_to_html(player.UUID);
         const user_name = $(user_html).text().trim();
+        const is_current = index == data.CurrentPlayer
         const html = `
-            <div class="player${index == data.CurrentPlayer ? ' current' : ''}" data-uuid="${player.UUID}" data-name="${user_name}">
+            <div class="player${is_current ? ' current' : ''}"
+                 data-uuid="${player.UUID}"
+                 data-name="${user_name}">
+                ${player.LeaderBoardIndex == 0 && !you ? '<canvas id="confetti-other"></canvas>' : ''}
                 <div class="player-cards">
                     <table class="player-grid">
                         ${row}
                     </table>
-                    <div ${you ? 'id="currently-drawn"' : ''} class="pile" data-annotation="currently drawn">${player.HasDrawn ? card_to_html(you ? data.EgoDrawnCard : null) : ''}</div>
+                    <div class="player-side">
+                        ${data.Players.length < 2 ? '<div class="player-rank" data-rank="-1">&nbsp;</div>' :
+                        `<div class="player-rank" data-rank="${player.LeaderBoardIndex + 1}">
+                            ${player.LeaderBoardIndex == 0 ? '1st' :
+                              player.LeaderBoardIndex == 1 ? '2st' :
+                              player.LeaderBoardIndex == 2 ? '3rd' : '&nbsp;'}
+                        </div>`}
+                        <div ${you ? 'id="currently-drawn"' : ''}
+                             class="pile"
+                             data-annotation="currently drawn"
+                             data-pile="current">${player.DrawnCard == null ? '' : card_to_html(player.DrawnCard, 'current')}</div>
+                        <div class="player-rank" data-rank="-1">&nbsp;</div>
+                    </div>
                 </div>
                 <div class="player-footer">
-                    Player: &nbsp; ${user_html},
+                    ${user_html}
                     &nbsp;
-                    Points: ${points}
+                    Points: ${points},
+                    Rank: ${1 + player.LeaderBoardIndex}
                     <br/>
                     <span class="on-current">
                         It is currently ${you ? 'your' : user_name + "'s"} turn to play.
@@ -502,8 +608,10 @@ function update_game_field(data)
 
     $('#players').html(divs.join('\n'));
     $('#game-player-count').html(data.Players.length);
-    $('#draw-pile').html(data.DrawPileSize > 0 ? card_to_html(null) : '');
-    $('#discard-pile').html(data.DiscardPileSize > 0 ? card_to_html(data.DiscardCard) : '');
+    $('#draw-pile').html(data.DrawPileSize > 0 ? card_to_html(null, 'draw') : '');
+    $('#discard-pile').html(data.DiscardPileSize > 0 ? card_to_html(data.DiscardCard, 'discard') : '');
+
+    confetti_other = confetti.create($('#confetti-other')[0], { resize: true });
 
     const state_txt = data.State == GAMESTATE_STOPPED ? 'Stopped'
                     : data.State == GAMESTATE_RUNNING ? 'Running'
@@ -530,6 +638,127 @@ function update_game_field(data)
         $(data.State == GAMESTATE_FINISHED ? '#admin-reset-game' : '#admin-stop-game').removeClass('hidden');
     else if (data.Players.length > 1)
         $('#admin-start-game').removeClass('hidden');
+
+    if (data.CurrentPlayer >= 0 && data.CurrentPlayer < data.Players.length && data.Players[data.CurrentPlayer].UUID == user_uuid)
+    {
+        let enable_dnd = true;
+
+        $('.card').removeClass(cls_dragallowed);
+        $('.pile').removeClass(cls_dropallowed);
+
+        if (data.WaitingFor == WAITINGFOR_DRAW)
+        {
+            $('.ego-side .card[data-pile="draw"],.ego-side .card[data-pile="discard"]').addClass(cls_dragallowed);
+            $('.ego-side .pile[data-pile="current"]').addClass(cls_dropallowed);
+            $('#instructions').html('Draw a card from either the discard or draw pile and drop it into your "currently drawn"-slot.');
+        }
+        else if (data.WaitingFor == WAITINGFOR_PLAY)
+        {
+            $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
+            $('.ego-side .pile[data-pile="discard"],.pile[data-pile*="user"]').addClass(cls_dropallowed);
+            $('#instructions').html(`You can either discard your currently drawn card or you can swap the drawn card with any of your own cards.
+                                     Both actions can be performed by simply dropping the currently drawn card onto the desired slot.`);
+        }
+        else if (data.WaitingFor == WAITINGFOR_DISCARD)
+        {
+            $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
+            $('.ego-side .pile[data-pile="discard"]').addClass(cls_dropallowed);
+            $('#instructions').html('Discard the swapped card by dropping it onto the discard pile.');
+        }
+        else
+            enable_dnd = false;
+
+        if (data.WaitingFor == WAITINGFOR_UNCOVER)
+        {
+            const cards = $('.ego-side .card[data-pile*="user"][data-value="null"]');
+
+            cards.addClass(cls_clickable);
+            cards.click(function()
+            {
+                const pile = $(this).parent();
+
+                server_send_query(
+                    TYPE_GAME_UNCOVER,
+                    { Row: +pile.attr('data-row'), Column: +pile.attr('data-col') },
+                    (_, d) => {
+                        if (d.Success)
+                            cards.removeClass(cls_clickable);
+                    }
+                );
+            });
+
+            $('#instructions').html('You are expected to uncover one of your cards. Simply tap the card to turn it over.');
+        }
+
+        if (enable_dnd)
+        {
+            $(`.ego-side .card.${cls_dragallowed}`).draggable({
+                start: (e, ui) =>
+                {
+                    $(e.target).addClass(cls_dragging);
+                    $(`.pile.${cls_dropallowed}`).addClass(cls_dragging);
+                },
+                stop: (e, ui) =>
+                {
+                    const card = $(e.target);
+                    const pile = $(`.pile.${cls_dropped}`);
+                    const valid = pile.hasClass(cls_dropallowed);
+                    const from = card.attr('data-pile');
+                    const to = pile.attr('data-pile');
+
+                    pile.removeClass(cls_dropped);
+                    card.removeClass(cls_dragging);
+                    $(`.pile.${cls_dragover}`).removeClass(cls_dragging);
+
+                    const revert = () => card.animate({
+                        left: '0px',
+                        top: '0px',
+                    });
+
+                    if (valid)
+                        if (to == 'current' && (from == 'draw' || from == 'discard'))
+                            return server_send_query(
+                                TYPE_GAME_DRAW,
+                                { Pile: from == 'draw' ? SOURCE_DRAW_PILE : SOURCE_DISCARD_PILE },
+                                (_, d) => {
+                                    if (!d.Success)
+                                        revert();
+                                }
+                            );
+                        else if (from == 'current' && to == 'discard')
+                            return server_send_query(TYPE_GAME_DISCARD, { }, (_, d) => {
+                                if (!d.Success)
+                                    revert();
+                            });
+                        else if (from == 'current' && to.startsWith('user'))
+                            return server_send_query(
+                                TYPE_GAME_SWAP,
+                                {
+                                    Row: +pile.attr('data-row'),
+                                    Column: +pile.attr('data-col')
+                                },
+                                (_, d) => {
+                                    if (!d.Success)
+                                        revert();
+                                }
+                            );
+
+                    revert();
+                }
+            });
+            $('.ego-side .pile').droppable({
+                drop: function(e, ui)
+                {
+                    $(`.pile`).removeClass(cls_dragover);
+                    $(e.target).addClass(cls_dropped);
+                },
+                accept: function(e) { return $(this).hasClass(cls_dropallowed); },
+                over: function(e, _) { $(e.target).addClass(cls_dragover); },
+                out: function(e, _) { $(e.target).removeClass(cls_dragover); }
+            });
+            $('*:not(.pile)').droppable({ accept: () => false });
+        }
+    }
 }
 
 function on_login_input_changed()
@@ -553,7 +782,6 @@ function on_login_input_changed()
 
 function show_username_select()
 {
-    $('body').addClass('logged-in');
     $('#login-container').addClass('hidden');
     $('#username-container').removeClass('hidden');
     $('#username-error').html('');
@@ -568,17 +796,6 @@ function show_username_select()
 }
 
 const preventDefault = e => e.preventDefault();
-
-function on_server_joined()
-{
-    // document.body.addEventListener('touchmove', preventDefault, { passive: false });
-}
-
-function on_server_leaving()
-{
-    // document.body.removeEventListener('touchmove', preventDefault);
-
-}
 
 function update_server_and_player_info()
 {
@@ -596,15 +813,17 @@ function update_server_and_player_info()
     sorted.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     sorted.sort((a, b) => a.admin == b.admin ? 0 : a.admin ? -1 : 1);
 
+    const admin_view = $('#main-container').hasClass('admin');
+
     for (const user of sorted)
         html += `
-        <tr>
+        <tr ${admin_view ? '' : 'class="separator"'}>
             <td class="level ${user.admin ? 'admin' : ''}"></td>
             <td>
                 ${user.name}
                 ${user.uuid == user_uuid ? '<span>You</span>' : ''}
             </td>
-            <td class="hidden">${user.game ? '<span>Joined Game</span>' : ''}</td>
+            ${admin_view ? `
             <td class="admin-only ${user.game ? '' : 'hidden'}">
                 <button class="admin-kick-from-game" data-uuid="${user.uuid}">
                     Remove from game
@@ -615,12 +834,18 @@ function update_server_and_player_info()
                     Kick from server
                 </button>
             </td>
+        </tr>
+        <tr ${admin_view ? 'class="separator"' : ''}>
+            <td class="separator" colspan="2">{${user.uuid}}</td>
+            <td></td>
             <td class="admin-only">
                 <button class="admin-make-${user.admin ? 'regular' : 'admin'}" data-uuid="${user.uuid}">
                     Make ${user.admin ? 'regular' : 'admin'} user
                 </button>
             </td>
-        </tr>`;
+        ` : ''}
+        </tr>
+        `;
 
     html += '</html>';
 
@@ -637,7 +862,7 @@ function update_server_and_player_info()
 
 function upate_user_info(uuid)
 {
-    server_send_query(TYPE_PLAYER_INFO_REQUEST, {UUID: uuid}, (_, response) =>
+    server_send_query(TYPE_PLAYER_INFO_REQUEST, { UUID: uuid }, (_, response) =>
     {
         if (!response.Exists)
             delete user_cache[uuid];
@@ -730,9 +955,9 @@ $('#username-apply').click(() =>
             user_name = $('#username-input').val();
             window.localStorage.setItem(STORAGE_USER_NAME, user_name);
 
+            $('body').addClass('ready');
             $('#game-container').removeClass('hidden');
             $('#username-container').addClass('hidden');
-            on_server_joined();
         }
         else
             $('#username-error').html(response.Message);
@@ -777,6 +1002,8 @@ $('#game-join').click(function()
 
 $('#game-leave').click(function()
 {
+    // TODO : leave confirmation
+
     $('#game-leave').addClass('hidden');
 
     server_send_command(TYPE_LEAVE_REQUEST, { });
@@ -787,6 +1014,8 @@ $('#admin-start-game').click(() => server_send_command(TYPE_GAME_START, { }));
 $('#admin-stop-game').click(() => server_send_command(TYPE_GAME_STOP, { }));
 
 $('#admin-reset-game').click(() => server_send_command(TYPE_GAME_RESET, { }));
+
+$('#shut-down-server').click(() => server_send_command(TYPE_SERVER_STOP, { }));
 
 
 
