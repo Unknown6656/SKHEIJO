@@ -24,14 +24,16 @@
 
     --font-size: 12pt;
 
+    --decoration-size: 110px;
+    --badge-size: 50px;
     --menu-size: 50px;
-    --min-width: 500px;
+    --min-width: 600px;
     --card-border: 4px;
     --card-height: 70px;
     --card-width: 50px;
     --player-width: 320px;
     --player-height: 300px;
-    --player-scale: .7;
+    --player-scale: .8;
 
     background-color: var(--color-bg);
     font-family: var(--font-main);
@@ -121,11 +123,17 @@ input[type="button"] {
     cursor: pointer;
 }
 
+hr {
+    border: 0px solid transparent;
+    border-bottom: 1px solid var(--color-fg);
+}
+
 a {
     text-decoration: underline;
     color: var(--color-links);
     cursor: pointer;
 }
+
 
 
 html {
@@ -139,8 +147,52 @@ body {
     margin: 0px;
 }
 
-body.logged-in {
+body.ready {
     min-width: var(--min-width);
+}
+
+#confetti-ego,
+#confetti-other,
+#background-container {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+     -khtml-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+            user-select: none;
+    background: transparent;
+    pointer-events: none;
+    height: 100%;
+    width: 100%;
+    bottom: 0px;
+    right: 0px;
+    left: 0px;
+    top: 0px;
+}
+
+#confetti-ego {
+    position: fixed;
+    z-index: 5000;
+}
+
+#background-container {
+    justify-content: center;
+    align-items: center;
+    position: fixed;
+    display: flex;
+    z-index: -10;
+    opacity: 0;
+
+    transition: opacity 2s;
+    transition-delay: .2s;
+}
+
+body.ready #background-container {
+    opacity: .5;
+}
+
+#background-container .fancy-title {
+    transform: scale(2);
 }
 
 #main-container {
@@ -257,23 +309,144 @@ body.logged-in {
     display: none;
 }
 
+#login-decoration,
+#login-loading,
+#login-failed {
+    pointer-events: none;
+    position: absolute;
+    margin: 0px;
+    right: 0px;
+    top: 0px;
+}
+
+#login-decoration {
+    border: 0px solid transparent;
+    height: var(--decoration-size);
+    width: var(--decoration-size);
+    justify-content: flex-start;
+    flex-direction: column;
+    align-items: flex-end;
+    color: white;
+    display: flex;
+    z-index: 15;
+}
+
+#login-decoration::before {
+    border: 0px solid transparent;
+    border-left: var(--decoration-size) solid transparent;
+    border-top: var(--decoration-size) solid blue;
+    border-style: solid;
+    position: absolute;
+    content: '';
+    z-index: -1;
+    height: 0px;
+    width: 0px;
+    right: 0px;
+}
+
+#login-decoration .decoration {
+    background-repeat: no-repeat;
+    background-position: right;
+    background-size: contain;
+    background-size: 20px;
+    padding-right: 27px;
+    margin-right: 5px;
+}
+
+#login-decoration .decoration:first-of-type {
+    margin-top: 5px;
+}
+
+#login-decoration .decoration[data-decoration="age"] {
+    background-image: url('../img/decoration-child.svg');
+}
+
+#login-decoration .decoration[data-decoration="count"] {
+    background-image: url('../img/decoration-group.svg');
+}
+
+#login-decoration .decoration[data-decoration="time"] {
+    background-image: url('../img/decoration-time.svg');
+}
+
+.fancy-title {
+    margin: 0px auto 50px auto;
+    text-align: center;
+    width: 100%;
+}
+
+.fancy-title h1,
+.fancy-title h3 {
+    -webkit-transform: matrix(1, -.2, 0, 1, 0, 0);
+        -ms-transform: matrix(1, -.2, 0, 1, 0, 0);
+            transform: matrix(1, -.2, 0, 1, 0, 0);
+}
+
+.fancy-title h1 {
+    text-shadow: 4px 5px #e6e6d8, 6px 7px #c6a39a;
+    font-weight: normal;
+    font-size: 80px;
+    margin: -20px;
+}
+
+.fancy-title h3 {
+    letter-spacing: .1em;
+    position: relative;
+    font-weight: 700;
+    font-size: 20px;
+    margin: 10px;
+}
+
+.fancy-title h3:before,
+.fancy-title h3:after {
+    border-bottom: 2px solid var(--color-fg);
+    border-top: 2px solid var(--color-fg);
+    position: absolute;
+    content: '';
+    height: 4px;
+    width: 60px;
+}
+
+.fancy-title h3:before {
+    margin: 5px 0 0 -70px;
+}
+
+.fancy-title h3:after {
+    margin: 5px 0 0 10px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 #login-loading,
 #login-failed {
     background-color: var(--color-bg);
     pointer-events: none;
     justify-content: center;
     align-items: center;
-    position: absolute;
     display: flex;
     height: 100%;
     width: 100%;
-    margin: 0px;
     bottom: 0px;
-    right: 0px;
     left: 0px;
-    top: 0px;
 
     opacity: 0;
+}
+
+#login-loading {
+    z-index: 20;
+}
+
+#login-failed {
+    z-index: 21;
 }
 
 #login-form.loading #login-loading,
@@ -313,7 +486,8 @@ body.logged-in {
 #login-failed-dismiss,
 #usage-warning-dismiss,
 #logout-button,
-#reset-logout-button {
+#reset-logout-button,
+#user-uuid {
     width: 100%;
 }
 
@@ -384,10 +558,11 @@ body.logged-in {
     background-position: center;
     background-repeat: no-repeat;
     background-size: calc(var(--menu-size) - 20px);
-    cursor: pointer;
-    padding: 10px;
+    min-height: var(--menu-size);
     height: var(--menu-size);
     width: var(--menu-size);
+    cursor: pointer;
+    padding: 10px;
 }
 
 .menu-item:hover {
@@ -402,6 +577,10 @@ body.logged-in {
 .menu-item[data-tab="game"] {
     background-image: url('../img/menu-cards.svg');
     transform: rotate(180deg);
+}
+
+.menu-item[data-tab="leaderboard"] {
+    background-image: url('../img/menu-leaderboard.svg');
 }
 
 .menu-item[data-tab="notifications"] {
@@ -420,6 +599,10 @@ body.logged-in {
     background-image: url('../img/menu-share.svg');
 }
 
+.menu-item[data-tab="help"] {
+    background-image: url('../img/menu-help.svg');
+}
+
 .menu-item[data-tab="logout"] {
     background-image: url('../img/menu-logout.svg');
 }
@@ -430,10 +613,10 @@ body.logged-in {
     background-size: contain;
     position: relative;
     display: block;
-    bottom: -15px;
-    right: -15px;
-    height: 15px;
-    width: 15px;
+    bottom: -16px;
+    right: -16px;
+    height: 16px;
+    width: 16px;
 }
 
 .menu-item:hover::after {
@@ -516,11 +699,13 @@ span.player-name[data-is-me]::after {
 }
 
 #player-list,
+#leaderboard-list,
 #notification-list {
     max-height: 100%;
 }
 
 #player-list table,
+#leaderboard-list table,
 #notification-list table {
     border-collapse: collapse;
 }
@@ -528,6 +713,9 @@ span.player-name[data-is-me]::after {
 #player-list table,
 #player-list tbody,
 #player-list tr,
+#leaderboard-list table,
+#leaderboard-list tbody,
+#leaderboard-list tr,
 #notification-list table,
 #notification-list tbody,
 #notification-list tr {
@@ -544,12 +732,16 @@ span.player-name[data-is-me]::after {
 
 #player-list tr,
 #player-list td,
+#leaderboard-list tr,
+#leaderboard-list td,
 #notification-list tr,
 #notification-list td {
     height: 30px;
 }
 
-#player-list tr:not(:last-child) td,
+#player-list tr td.separator,
+#player-list tr.separator td,
+#leaderboard-list tr:not(:last-child) td,
 #notification-list tr:not(:last-child) td {
     border-bottom: 1px solid var(--color-fg);
 }
@@ -688,7 +880,7 @@ span.player-name[data-is-me]::after {
     width: 100%;
 }
 
-#main-game .game-state {
+.game-state {
     border-bottom: 1px solid var(--color-fg);
     background-color: var(--color-bg);
     flex-direction: row;
@@ -697,22 +889,22 @@ span.player-name[data-is-me]::after {
     width: 100%;
 }
 
-#main-game .game-state button {
+.game-state button {
     min-width: 100px;
     height: 30px;
     margin: auto;
 }
 
-#main-game .game-state button.hidden {
+.game-state button.hidden {
     display: none;
 }
 
-#main-game .playing-field-holder {
+.playing-field-holder {
     overflow-y: scroll;
     flex: 1;
 }
 
-#main-game .playing-field {
+.playing-field {
     justify-content: space-evenly;
     align-content: center;
     align-items: center;
@@ -721,36 +913,41 @@ span.player-name[data-is-me]::after {
     display: flex;
 }
 
-#main-game .other-player {
+.other-player {
     height: calc(var(--player-height) * var(--player-scale));
     width: calc(var(--player-width) * var(--player-scale));
     margin: 5px;
 }
 
-#main-game .other-player .player {
+.other-player .player {
     transform: scale(var(--player-scale));
     transform-origin: top left;
 }
 
-#main-game .ego-side {
+#confetti-other {
+    position: absolute;
+    z-index: 4000;
+}
+
+.ego-side {
     border-top: 1px solid var(--color-fg);
     background-color: var(--color-bg);
     justify-content: space-evenly;
     flex-direction: row;
     display: flex;
-    padding: 15px;
+    padding: 15px 15px 30px 15px;
     bottom: 0px;
     right: 0px;
     left: 0px;
 }
 
-#main-game #ego-player {
+#ego-player {
     justify-content: center;
     flex-direction: row;
     display: flex;
 }
 
-#main-game .player {
+.player {
     background-color: #BBAAAA77;
     background-image: radial-gradient(
         circle,
@@ -770,20 +967,20 @@ span.player-name[data-is-me]::after {
     width: var(--player-width);
 }
 
-#main-game .player .player-cards,
-#main-game .player .player-footer {
+.player .player-cards,
+.player .player-footer {
     padding: 5px;
 }
 
-#main-game .player .player-cards {
-    justify-content: space-evenly;
+.player .player-cards {
+    justify-content: space-between;
     flex-direction: row;
     align-items: center;
     display: flex;
     width: 100%;
 }
 
-#main-game .player.current {
+.player.current {
     animation: current-player .75s infinite ease-out alternate-reverse;
 }
 
@@ -796,18 +993,65 @@ span.player-name[data-is-me]::after {
     }
 }
 
-#main-game .player .on-current {
+.player .on-current {
     color: blue;
     opacity: 0;
 
     transition: opacity .4s;
 }
 
-#main-game .player.current .on-current {
+.player.current .on-current {
     opacity: 1;
 }
 
-#main-game .piles {
+.player-side {
+    justify-content: space-between;
+    flex-direction: column;
+    align-items: center;
+    display: flex;
+    height: 100%;
+}
+
+.player-rank[data-rank] {
+    background-image: url('../img/stars.png');
+    background-size: auto var(--badge-size);
+    background-repeat: no-repeat;
+    background-position-x: -100%;
+    padding-top: calc(var(--badge-size) - 6px);
+    width: var(--badge-size);
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2em;
+    display: block;
+}
+
+.player-rank[data-rank="1"] {
+    background-position-x: 100%;
+    color: #dc9630;
+}
+
+.player-rank[data-rank="2"] {
+    background-position-x: 50%;
+    color: dimgray;
+}
+
+.player-rank[data-rank="3"] {
+    background-position-x: 0%;
+    color: chocolate;
+}
+
+.right-side {
+    justify-content: space-between;
+    flex-direction: column;
+    align-items: center;
+    display: flex;
+}
+
+#instructions {
+    max-width: 200px;
+}
+
+.piles {
     justify-content: space-around;
     align-items: center;
     position: relative;
@@ -815,16 +1059,15 @@ span.player-name[data-is-me]::after {
     display: flex;
     padding: 0px 10px 0px 0px;
     width: 150px;
-    margin: auto 0;
 }
 
-#main-game .pile,
-#main-game .player {
+.pile,
+.player {
     border-radius: calc(var(--card-border) * 2);
     border: 1px solid var(--color-gray);
 }
 
-#main-game .pile {
+.pile {
     background: linear-gradient(
         -45deg,
         var(--color-control-bg) 12.5%,
@@ -843,7 +1086,7 @@ span.player-name[data-is-me]::after {
     padding: 2px;
 }
 
-#main-game .pile[data-annotation]::after {
+.pile[data-annotation]::after {
     content: attr(data-annotation);
     position: relative;
     text-align: center;
@@ -854,11 +1097,11 @@ span.player-name[data-is-me]::after {
     left: -25%;
 }
 
-#main-game .pile[data-annotation]:empty::after {
+.pile[data-annotation]:empty::after {
     top: 100%;
 }
 
-#main-game .card {
+.card {
     background-image: url('../img/card-back.png');
     background-position: center;
     background-repeat: no-repeat;
@@ -874,13 +1117,13 @@ span.player-name[data-is-me]::after {
     width: 100%;
 }
 
-#main-game .card[data-value]:not([data-value="null"]) {
+.card[data-value]:not([data-value="null"]) {
     background-image: url('../img/card-front.png');
 
     --base-color: 255, 255, 255;
 }
 
-#main-game .card[data-value]:not([data-value="null"]) span {
+.card[data-value]:not([data-value="null"]) span {
     background: radial-gradient(circle at center, #FFFFFF88, #FFFFFF88 40%, rgba(var(--base-color), 0.3) 40%);
     justify-content: center;
     align-items: center;
@@ -891,34 +1134,96 @@ span.player-name[data-is-me]::after {
     width: 100%;
 }
 
-#main-game .card[data-value="-2"] span,
-#main-game .card[data-value="-1"] span {
+.card[data-value="-2"] span,
+.card[data-value="-1"] span {
     --base-color: 0, 0, 255;
 }
 
-#main-game .card[data-value="0"] span {
+.card[data-value="0"] span {
     --base-color: 0, 255, 255;
 }
 
-#main-game .card[data-value="1"] span,
-#main-game .card[data-value="2"] span,
-#main-game .card[data-value="3"] span,
-#main-game .card[data-value="4"] span {
+.card[data-value="1"] span,
+.card[data-value="2"] span,
+.card[data-value="3"] span,
+.card[data-value="4"] span {
     --base-color: 0, 255, 0;
 }
 
-#main-game .card[data-value="5"] span,
-#main-game .card[data-value="6"] span,
-#main-game .card[data-value="7"] span,
-#main-game .card[data-value="8"] span {
+.card[data-value="5"] span,
+.card[data-value="6"] span,
+.card[data-value="7"] span,
+.card[data-value="8"] span {
     --base-color: 255, 255, 0;
 }
 
-#main-game .card[data-value="9"] span,
-#main-game .card[data-value="10"] span,
-#main-game .card[data-value="11"] span,
-#main-game .card[data-value="12"] span {
+.card[data-value="9"] span,
+.card[data-value="10"] span,
+.card[data-value="11"] span,
+.card[data-value="12"] span {
     --base-color: 255, 0, 0;
 }
+
+.card.ui-draggable,
+.card.ui-draggable-handle,
+.card[draggable="true"] {
+    -webkit-user-drag: element;
+    cursor: move;
+}
+
+.card.drag-active,
+.card.ui-draggable-dragging {
+    z-index: 100;
+    opacity: .6;
+}
+
+.card.drag-allowed::before {
+    // TODO : make cursor bobbing animation
+}
+
+.card.click-allowed::before {
+    // TODO : make cursor bobbing animation
+}
+
+.card.drag-allowed,
+.card.click-allowed {
+    animation: interactable-card .75s infinite ease-out alternate-reverse;
+}
+
+@keyframes interactable-card {
+    0% {
+        box-shadow: 0px 0px 0px 1px dodgerblue;
+    }
+    100% {
+        box-shadow: 0px 0px 0px 2px dodgerblue;
+    }
+}
+
+.pile.drag-active {
+    --color-control-bg: lightcoral;
+    --color-bg-hover: lightsalmon;
+}
+
+.pile.drop-allowed.drag-active {
+    --color-control-bg: lightgreen;
+    --color-bg-hover: palegreen;
+}
+
+.pile.drag-over {
+    --color-control-bg: Crimson;
+    --color-bg-hover: IndianRed;
+}
+
+.pile.drop-allowed.drag-over {
+    --color-control-bg: green;
+    --color-bg-hover: forestgreen;
+}
+
+
+
+
+
+
+
 
 
