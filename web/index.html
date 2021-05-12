@@ -12,6 +12,7 @@
         <link rel="stylesheet" type="text/css" href="css/style.css"/>
     </head>
     <body>
+        <canvas id="confetti-ego"></canvas>
         <div id="main-container">
             <div id="usage-container">
                 <div id="usage-warning">
@@ -62,6 +63,11 @@
             </div>
             <div id="login-container" class="hidden">
                 <div id="login-form">
+                    <div id="login-decoration">
+                        <div class="decoration" data-decoration="time">20 min</div>
+                        <div class="decoration" data-decoration="count">2-10</div>
+                        <div class="decoration" data-decoration="age">8+</div>
+                    </div>
                     <div id="login-loading">
                         <span>Connecting ...</span>
                     </div>
@@ -85,7 +91,10 @@
                             <button id="login-failed-dismiss">Dismiss message</button>
                         </span>
                     </div>
-                    <h1>Welcome to SKHEIJO!</h1>
+                    <div class="fancy-title">
+                        <h3>WELCOME TO</h3>
+                        <h1>SKHEIJO</h1>
+                    </div>
                     <p>
                         SKHEIJO is a digital adaptation of the German board game <a href="https://www.magilano.com/produkt/skyjo" target="_blank">SKYJO</a>.
                         Our mascot is a hamster called HEIKKI, hence the name adaptation SK<b>HEI</b>JO.
@@ -94,7 +103,7 @@
                         <br/>
                         You need a connection code to join a game.
                         Enter the code into the box below.
-                        The connection code uniquely identifies a game server and is usually represented as a sequence of seemingly random characters such as 'MTI3LjAuMC4xJDE0NDg4JDE0NDk5'.
+                        The connection code uniquely identifies a game server and is usually represented as a sequence of seemingly random characters such as 'MTI3LjAu...'.
                     </p>
                     <input type="text" id="login-string" placeholder="Enter the connection code here."/>
                     <p>
@@ -105,7 +114,7 @@
                                         The code does not seem to be of the correct format.
                                     </span>
                                 </td>
-                                <td>
+                                <td style="text-align: right">
                                     <button id="login-start" class="hidden">Connect ...</button>
                                 </td>
                             </tr>
@@ -125,7 +134,7 @@
                         You may change it below.
                     </p>
                     <input type="text" id="username-input" placeholder="your name or alias" maxlength="32"/>
-                    <p>
+                    <p style="text-align: right">
                         <button id="username-apply">Use the user name</button>
                     </p>
                     <span id="username-error"></span>
@@ -134,11 +143,13 @@
             <div id="game-container" class="hidden">
                 <div class="menu-bar">
                     <div class="menu-item" data-tab="game"></div>
+                    <div class="menu-item" data-tab="leaderboard"></div>
                     <div class="menu-item" data-tab="players"></div>
                     <div class="menu-item" data-tab="share"></div>
                     <div class="menu-item" data-tab="notifications"></div>
                     <div class="menu-spacer"></div>
                     <div class="menu-item" data-tab="settings"></div>
+                    <div class="menu-item" data-tab="help"></div>
                     <div class="menu-item" data-tab="logout"></div>
                 </div>
                 <div class="menu-content-holder">
@@ -170,11 +181,22 @@
                         </div>
                         <div class="ego-side">
                             <div id="ego-player"></div>
-                            <div class="piles">
-                                <div id="draw-pile" class="pile" data-annotation="draw pile"></div>
-                                <div id="discard-pile" class="pile" data-annotation="discard pile"></div>
+                            <div class="right-side">
+                                <div class="piles">
+                                    <div id="draw-pile" class="pile" data-annotation="draw pile" data-pile="draw"></div>
+                                    <div id="discard-pile" class="pile" data-annotation="discard pile" data-pile="discard"></div>
+                                </div>
+                                <div id="instructions"></div>
                             </div>
                         </div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="leaderboard">
+                        <h1>Game league table</h1>
+                        <p>
+                            The following list enumerates all players participating in the current game ordered by their current points.
+                            Please note that the best SKHEIJO players aim for the lowest point score.
+                        </p>
+                        <div id="leaderboard-list"></div>
                     </div>
                     <div class="menu-content hidden" data-tab="players">
                         <h1>Player overview <span class="admin-only">and user management</span></h1>
@@ -214,7 +236,7 @@
                             The removal of your identity will reset your name and your administrator rights (should you possess any).
                         </p>
                         <p>
-                            <button id="reset-logout-button">Reset identity and log me out.</button>
+                            <button id="reset-logout-button">I know what I'm doing. Reset my identity and log me out.</button>
                         </p>
                     </div>
                     <div class="menu-content hidden" data-tab="share">
@@ -242,21 +264,58 @@
                             <button class="share" data-service="native">Share ...</button>
                         </div>
                     </div>
+                    <div class="menu-content hidden" data-tab="help">
+                        <h1>Help / About</h1>
+                        <p>
+                            TODO: game rules<br/>
+                            TODO: usage help/documentation
+                        </p>
+                    </div>
                     <div class="menu-content hidden" data-tab="settings">
                         <h1>Settings</h1>
                         <p>
-                            These are not the droids you are looking for.
-                            <br/>
-                            Move along.
+                            The following text field contains your player UUID.
+                            UUID stands for 'Universally Unique Identifier' and uniquely identifies you on the game server.
+                            Do not share your UUID with other players &#8212; only with the server administrator when required to do so.
+                            You can reset your UUID in the logout-menu (<img src="img/menu-logout.svg" style="height: .8em;"/>).
+                        </p>
+                        <input id="user-uuid" type="text" readonly placeholder="{00000000-0000-0000-0000-000000000000}"/>
+                        <br/>
+                        <br/>
+                        <p>
+                            TODO: change name <br/>
+                            TODO: auto login <br/>
+                        </p>
+                        <p class="admin-only">
+                            <hr/>
+                            <h2>
+                                Shut down the Server
+                            </h2>
+                            <button id="shut-down-server">
+                                I KNOW WHAT I'M DOING.
+                                <br/>
+                                I KNOW THAT I'LL HAVE TO RESTART THE SERVER MANUALLY.
+                                <br/>
+                                I KNOW HOW TO RESTART THE SERVER AND/OR HOW TO USE THE COMMAND LINE.
+                            </button>
                         </p>
                     </div>
+                </div>
+            </div>
+            <div id="background-container">
+                <div class="fancy-title">
+                    <h1>SKHEIJO</h1>
+                    <h3>A HEIKKI GAME</h3>
                 </div>
             </div>
         </div>
         <script>
             var on_page_loaded = undefined;
         </script>
-        <script type="text/javascript" src="js/jquery.js"></script>
+        <script type="text/javascript" src="js/jquery.min.js"></script>
+        <script type="text/javascript" src="js/jquery-ui.min.js"></script>
+        <script type="text/javascript" src="js/jquery-ui-touch.min.js"></script>
+        <script type="text/javascript" src="js/confetti.js"></script>
         <script type="text/javascript" src="js/uuid.js"></script>
         <script type="text/javascript" src="js/browser.js"></script>
         <script type="text/javascript" src="js/script.js"></script>
@@ -271,8 +330,3 @@
         </script>
     </body>
 </html>
-<!--
-TODO:
-    - auto login
-    -
--->
