@@ -5,6 +5,8 @@ using System.Text;
 using System;
 
 using Unknown6656.Common;
+using System.Data.Common;
+using System.Numerics;
 
 namespace SKHEIJO
 {
@@ -54,7 +56,7 @@ namespace SKHEIJO
         public (Card card, bool visible)[,] GameField;
         public Card? CurrentlyDrawnCard = null;
 
-        public int VisiblePoints => GameField.Cast<(Card c, bool v)>().Aggregate(0, (s, t) => s + (t.v ? 0 :t.c.Value));
+        public int VisiblePoints => GameField.Cast<(Card c, bool v)>().Aggregate(0, (s, t) => s + (t.v ? t.c.Value : 0));
 
         public int VisibleCount => GameField.Cast<(Card c, bool v)>().Count(t => t.v);
 
@@ -107,6 +109,7 @@ namespace SKHEIJO
         public static int MAX_PLAYERS = 10;
 
         private GameState _state;
+        private GameWaitingFor _waiting;
         private Player? _final_round_initiator;
 
         public Stack<Card> DrawPile { get; }
@@ -121,7 +124,25 @@ namespace SKHEIJO
             {
                 if (_state != value)
                 {
+                    $"Game state changed: {_state} -> {value}".Log(LogSource.Game);
+
                     _state = value;
+
+                    OnGameStateChanged?.Invoke(this);
+                }
+            }
+        }
+
+        public GameWaitingFor WaitingFor
+        {
+            get => _waiting;
+            set
+            {
+                if (_waiting != value)
+                {
+                    $"Game waiting for changed: {_waiting} -> {value}".Log(LogSource.Game);
+
+                    _waiting = value;
 
                     OnGameStateChanged?.Invoke(this);
                 }
@@ -159,6 +180,8 @@ namespace SKHEIJO
                 OnPlayerAdded?.Invoke(this, player);
                 OnGameStateChanged?.Invoke(this);
 
+                $"Player joined: {player}".Log(LogSource.Game);
+
                 return true;
             }
 
@@ -190,6 +213,8 @@ namespace SKHEIJO
                 OnPlayerRemoved?.Invoke(this, player);
                 OnGameStateChanged?.Invoke(this);
 
+                $"Player left: {player}".Log(LogSource.Game);
+
                 return true;
             }
             else
@@ -201,14 +226,17 @@ namespace SKHEIJO
         public int NextPlayer(int player_index)
         {
             CurrentPlayerIndex = Players.Count == 0 ? 0 : (player_index + Players.Count) % Players.Count;
+            WaitingFor = GameWaitingFor.Draw;
 
-            OnGameStateChanged?.Invoke(this);
+            $"Next player: {CurrentPlayerIndex}".Log(LogSource.Game);
 
             return CurrentPlayerIndex;
         }
 
         public void DealCardsAndRestart(int total_cards = 150, int first_player = 0)
         {
+            "Restarting game ...".Log(LogSource.Game);
+
             total_cards = Math.Max(total_cards, Players.Count * 15 + 30);
 
             Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card(i % 15 - 2))).ToArray();
@@ -243,13 +271,15 @@ namespace SKHEIJO
         }
 
 
-        public bool CurrentPlayer___SwapDrawnCardWithGridAndThenDiscard(int row, int column)
+        public bool CurrentPlayer___SwapDrawn(int row, int column)
         {
-            if (CurrentPlayer.CurrentlyDrawnCard is Card drawn)
+            if (WaitingFor == GameWaitingFor.Play && CurrentPlayer.CurrentlyDrawnCard is Card drawn)
             {
-                DiscardPile.Push(CurrentPlayer.GameField[row, column].card);
+                $"Current: swap drawn card with {row}-{column}".Log(LogSource.Game);
+
+                CurrentPlayer.CurrentlyDrawnCard = CurrentPlayer.GameField[row, column].card;
                 CurrentPlayer.GameField[row, column] = (drawn, true);
-                OnGameStateChanged?.Invoke(this);
+                WaitingFor = GameWaitingFor.Discard;
 
                 return true;
             }
@@ -257,30 +287,50 @@ namespace SKHEIJO
                 return false;
         }
 
-        public bool CurrentPlayer___DiscardDrawnCardThenAndTurnOver(int row, int column)
+        public bool CurrentPlayer___DiscardDrawn()
         {
-            if (!CurrentPlayer.GameField[row, column].visible)
-                if (CurrentPlayer.CurrentlyDrawnCard is Card drawn)
-                {
-                    DiscardPile.Push(drawn);
-                    CurrentPlayer.GameField[row, column] = (drawn, true);
-                    OnGameStateChanged?.Invoke(this);
+            if (WaitingFor is GameWaitingFor.Discard or GameWaitingFor.Play && CurrentPlayer.CurrentlyDrawnCard is Card card)
+            {
+                "Current: discard drawn".Log(LogSource.Game);
 
-                    return true;
-                }
+                DiscardPile.Push(card);
+                CurrentPlayer.CurrentlyDrawnCard = null;
+                WaitingFor = WaitingFor is GameWaitingFor.Discard ? GameWaitingFor.NextPlayer : GameWaitingFor.Uncover;
+
+                return true;
+            }
 
             return false;
         }
 
+        public bool CurrentPlayer___UncoverCard(int row, int column)
+        {
+            if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer.GameField[row, column] is { card: Card card, visible: false })
+            {
+                $"Current: uncover card {row}-{column}".Log(LogSource.Game);
+
+                CurrentPlayer.GameField[row, column] = (card, true);
+                WaitingFor = GameWaitingFor.NextPlayer;
+
+                return true;
+            }
+            else
+                return false;
+        }
+
         public bool CurrentPlayer___DrawCard(bool from_discard_pile)
         {
-            if (CurrentPlayer.CurrentlyDrawnCard is { })
+            if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer.CurrentlyDrawnCard is null)
+            {
+                $"Current: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
+
+                CurrentPlayer.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
+                WaitingFor = GameWaitingFor.Play;
+
+                return true;
+            }
+            else
                 return false;
-
-            CurrentPlayer.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
-            OnGameStateChanged?.Invoke(this);
-
-            return true;
         }
 
         public void CurrentPlayer___RemoveFullColumnsOfIdenticalCards(out int column_count)
@@ -298,6 +348,8 @@ namespace SKHEIJO
 
                 if (Enumerable.Range(0, player.Dimensions.rows).All(row => player.GameField[row, col].visible))
                 {
+                    $"Removing identical stack {col} from {player}".Log(LogSource.Game);
+
                     player.RemoveColumn(col);
 
                     ++column_count;
@@ -324,6 +376,8 @@ namespace SKHEIJO
 
                 // TODO : ???
 
+                $"{_final_round_initiator} entered final round".Log(LogSource.Game);
+
                 return true;
             }
             else
@@ -347,9 +401,18 @@ namespace SKHEIJO
 
     public enum GameState
     {
-        Stopped,
-        Running,
-        FinalRound,
-        Finished,
+        Stopped = 0,
+        Running = 1,
+        FinalRound = 2,
+        Finished = 3,
+    }
+
+    public enum GameWaitingFor
+    {
+        Draw = 0,
+        Play = 1,
+        Discard = 2,
+        Uncover = 3,
+        NextPlayer = 4,
     }
 }
