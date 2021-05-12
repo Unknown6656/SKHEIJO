@@ -1,0 +1,29 @@
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha512
+x509_extensions = v3_req
+distinguished_name = dn
+
+[dn]
+C = US
+ST = XX
+L = SKHEIJO
+O = SKHEIJO
+OU = SKHEIJO
+emailAddress = webmaster@skheijo.dynv6.net
+CN = skheijo.dynv6.net
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = *.skheijo.dynv6.net
+DNS.2 = skheijo.dynv6.net
+DNS.3 = *.unknown6656.com
+DNS.4 = unknown6656.com
+DNS.5 = *.localhost
+DNS.6 = localhost
+DNS.7 = 192.168.0.26
+DNS.8 = 192.168.0.27
+DNS.9 = 192.168.0.100
