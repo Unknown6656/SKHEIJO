@@ -3,7 +3,8 @@
         The following line is only used for local servers when creating the invitation code.
         The server is actually listening on "0.0.0.0" or "[::]".
     */
-    "address": "192.168.0.26",
+    "secure": true,
+    "address": "skheijo.dynv6.net",
     "port_tcp": 42088,
     "port_web": 42089,
     "server_name": "Test Server 1234",

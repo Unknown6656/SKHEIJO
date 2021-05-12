@@ -17,7 +17,6 @@ using Fleck;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
-using System.Data.Common;
 
 namespace SKHEIJO
 {
@@ -272,20 +271,24 @@ namespace SKHEIJO
         public event Action<Player>? OnPlayerLeft;
 
 
-        private GameServer(ConnectionString connection_string, string server_name)
+        private GameServer(ConnectionString connection_string, string server_name, bool secure)
         {
             ServerName = server_name;
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
-            TCPListener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Ports.CSharp));
-            WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.Web}", true);
-            WebSocketServer.ListenerSocket.NoDelay = true;
-            WebSocketServer.RestartAfterListenError = true;
             CurrentGame = null;
             _players = new();
             _incoming = new();
             _outgoing = new();
             AdminUUIDs = new();
+
+            TCPListener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Ports.CSharp));
+            WebSocketServer = new($"{(secure ? "wss" : "ws")}://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.Web}", true);
+            WebSocketServer.ListenerSocket.NoDelay = true;
+            WebSocketServer.RestartAfterListenError = true;
+
+            if (secure)
+                WebSocketServer.Certificate = 
         }
 
         public void Start()
@@ -885,7 +888,7 @@ namespace SKHEIJO
 
         private static GameServer CreateLocalGameServer(ConnectionString connstr, ServerConfig config)
         {
-            GameServer server = new(connstr, config.server_name);
+            GameServer server = new(connstr, config.server_name, config.secure);
 
             server.AddBannedNames(config.banned_names);
             server.AdminUUIDs ??= new();
@@ -901,7 +904,7 @@ namespace SKHEIJO
              CreateLocalGameServer(await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_web), config);
     }
 
-    public sealed record ServerConfig(string address, ushort port_tcp, ushort port_web, string server_name, string[] banned_names, Guid[]? admin_uuids);
+    public sealed record ServerConfig(string address, bool secure, ushort port_tcp, ushort port_web, string server_name, string[] banned_names, Guid[]? admin_uuids);
 
     public sealed class GameClient
         : IDisposable
