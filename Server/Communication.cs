@@ -17,6 +17,7 @@ using Fleck;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
+using System.Data.Common;
 
 namespace SKHEIJO
 {
@@ -340,6 +341,8 @@ namespace SKHEIJO
 
                 _players.Clear();
                 _stopping = 0;
+
+                "Server stopped. Press [ENTER] to terminate.".Info(LogSource.Server);
             }
         }
 
@@ -633,10 +636,10 @@ namespace SKHEIJO
         {
             switch (message)
             {
-                case CommunicationData_PlayerNameChangeRequest request:
+                case CommunicationData_PlayerNameChangeRequest(string name):
                     {
+                        name = name.Trim();
                         string? banned = null;
-                        string name = request.Name.Trim();
 
                         if (name.Length < 2 && name.Length > 32)
                             return new CommunicationData_SuccessError(false, "Your name is shorter than 2 characters or is longer than 32 characters.");
@@ -663,12 +666,12 @@ namespace SKHEIJO
                         else
                             return new CommunicationData_SuccessError(false, "Your name contains a banned word :(");
                     }
-                case CommunicationData_GameJoinRequest request:
+                case CommunicationData_GameJoinRequest:
                     if (CurrentGame?.TryAddPlayer(player, out _) ?? false)
                         return CommunicationData_SuccessError.OK;
                     else
                         return new CommunicationData_SuccessError(false, "Unable to join game: The game is either currently running or has not yet been initiated by an administrator.");
-                case CommunicationData_GameLeaveRequest request:
+                case CommunicationData_GameLeaveRequest:
                     return new CommunicationData_SuccessError(CurrentGame?.RemovePlayer(player) ?? false, null);
                 case CommunicationData_PlayerQueryInfo request:
                     {
@@ -677,6 +680,26 @@ namespace SKHEIJO
                         else
                             return CommunicationData_PlayerInfo.NotFound;
                     }
+                case CommunicationData_GameDraw(DrawSource source_pile):
+                    if (CurrentGame?.CurrentPlayer___DrawCard(source_pile is DrawSource.DiscardPile) ?? false)
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "Invalid game move.");
+                case CommunicationData_GameSwap(int row, int column):
+                    if (CurrentGame?.CurrentPlayer___SwapDrawn(row, column) ?? false)
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "Invalid game move.");
+                case CommunicationData_GameDiscard:
+                    if (CurrentGame?.CurrentPlayer___DiscardDrawn() ?? false)
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "Invalid game move.");
+                case CommunicationData_GameUncover(int row, int column):
+                    if (CurrentGame?.CurrentPlayer___UncoverCard(row, column) ?? false)
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "Invalid game move.");
                 case CommunicationData_AdminCommand admin_request:
                     if (this[player] is not { IsAdmin: true })
                         return new CommunicationData_SuccessError(false, "Unable to execute command: You must be an administrator.");
@@ -747,6 +770,10 @@ namespace SKHEIJO
                                 CurrentGame?.FinishGame();
 
                                 return CommunicationData_SuccessError.OK;
+                            case CommunicationData_AdminServerStop:
+                                await Task.Factory.StartNew(Stop);
+
+                                return CommunicationData_SuccessError.OK;
                             default:
                                 return OnIncomingData?.Invoke(player, message, reply_requested);
                         }
@@ -790,11 +817,28 @@ namespace SKHEIJO
 
         public void RemovePlayerFromCurrentGame(Player player) => CurrentGame?.RemovePlayer(player);
 
-        private void CurrentGame_OnGameStateChanged(Game game) => BroadcastCurrentGameState(game);
+        private void CurrentGame_OnGameStateChanged(Game game)
+        {
+            if (game is { CurrentGameState: GameState.Running or GameState.FinalRound, WaitingFor: GameWaitingFor.NextPlayer })
+                if (game.CurrentPlayer___FinishesFinalRound())
+                {
+                    if (game.FinishGame().FirstOrDefault().Player is Player winner)
+                        NotifyAll(new CommunicationData_PlayerWin(winner.UUID));
+                }
+                else
+                {
+                    if (game.CurrentPlayer___TryEnterFinalRound())
+                        NotifyGamePlayers(new CommunicationData_Notification("Final game round!"));
 
-        private void CurrentGame_OnPlayerRemoved(Game game, Player player) => NotifyGamePlayers(new CommunicationData_PlayerLeftGame(player.UUID));
+                    game.NextPlayer();
+                }
+            else
+                BroadcastCurrentGameState(game);
+        }
 
-        private void CurrentGame_OnPlayerAdded(Game game, Player player) => NotifyGamePlayers(new CommunicationData_PlayerJoinedGame(player.UUID));
+        private void CurrentGame_OnPlayerRemoved(Game game, Player player) => NotifyAll(new CommunicationData_PlayerLeftGame(player.UUID));
+
+        private void CurrentGame_OnPlayerAdded(Game game, Player player) => NotifyAll(new CommunicationData_PlayerJoinedGame(player.UUID));
 
         private void BroadcastCurrentGameState(Game game) => BroadcastCurrentGameState(game, _players.Keys);
 
@@ -816,7 +860,7 @@ namespace SKHEIJO
 
                 index = index == 0 ? leader_board.Length - 1 : index - 1;
 
-                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard is { }, index);
+                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard, index);
             });
 
             foreach (Player player in targets)
@@ -826,12 +870,15 @@ namespace SKHEIJO
                     game.DiscardPile.Count,
                     game.DiscardedCard,
                     game.CurrentGameState,
+                    game.WaitingFor,
                     players,
                     game.CurrentGameState is GameState.Running or GameState.FinalRound ? game.CurrentPlayerIndex : -1,
                     game.Players.FirstOrDefault(p => p.Player == player)?.CurrentlyDrawnCard,
                     Game.MAX_PLAYERS
                 ));
             }
+
+            NotifyAll(new CommunicationData_LeaderBoard(game.GetCurrentLeaderBoard().ToArray(t => new CommunicationData_LeaderBoard.LeaderBoardEntry(t.Player.UUID, t.Points))));
         }
 
         #endregion

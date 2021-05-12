@@ -4,6 +4,8 @@ using System.Linq;
 using System;
 
 using Unknown6656.Common;
+using System.Data.Common;
+using static SKHEIJO.CommunicationData_LeaderBoard;
 
 namespace SKHEIJO
 {
@@ -12,6 +14,12 @@ namespace SKHEIJO
         ServerShutdown = 0,
         Kicked = 1,
         // TODO : ?
+    }
+
+    public enum DrawSource
+    {
+        DrawPile = 0,
+        DiscardPile = 1
     }
 
     public abstract record CommunicationData
@@ -78,13 +86,14 @@ namespace SKHEIJO
         int DiscardPileSize,
         Card? DiscardCard,
         GameState State,
+        GameWaitingFor WaitingFor,
         CommunicationData_GameUpdate.GameUpdatePlayerData[] Players,
         int CurrentPlayer,
         Card? EgoDrawnCard,
         int MaxPlayers
     ) : CommunicationData
     {
-        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, bool HasDrawn, int LeaderBoardIndex);
+        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, Card? DrawnCard, int LeaderBoardIndex);
     }
 
     // client -> server
@@ -92,6 +101,9 @@ namespace SKHEIJO
 
     // client -> server
     public sealed record CommunicationData_GameLeaveRequest : CommunicationData;
+
+    // client -> server
+    public sealed record CommunicationData_AdminServerStop : CommunicationData_AdminCommand;
 
     // client -> server
     public sealed record CommunicationData_AdminGameStart : CommunicationData_AdminCommand;
@@ -113,4 +125,26 @@ namespace SKHEIJO
 
     // client -> server
     public sealed record CommunicationData_AdminMakeRegular(Guid UUID) : CommunicationData_AdminCommand;
+
+    // client -> server
+    public sealed record CommunicationData_GameDraw(DrawSource Pile) : CommunicationData;
+
+    // client -> server
+    public sealed record CommunicationData_GameSwap(int Row, int Column) : CommunicationData;
+
+    // client -> server
+    public sealed record CommunicationData_GameDiscard : CommunicationData;
+
+    // client -> server
+    public sealed record CommunicationData_GameUncover(int Row, int Column) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_PlayerWin(Guid UUID) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_LeaderBoard(LeaderBoardEntry[] LeaderBoard)
+        : CommunicationData
+    {
+        public sealed record LeaderBoardEntry(Guid UUID, int Points);
+    }
 }
