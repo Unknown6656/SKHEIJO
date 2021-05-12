@@ -22,6 +22,8 @@ namespace Server
 
         public static async Task Main(string[] args)
         {
+            Console.Clear();
+
             Logger.MinimumSeverityLevel = LogSeverity.Info;
             Logger.Start();
 
@@ -64,9 +66,13 @@ type 'q' to exit or '?' for help.
             Regex R_SAY_PRIVATE = new(@"^@(?<p>.+)@\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_ADD = new(@"^a\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_REMOVE = new(@"^v\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_WIN = new(@"^w\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
             do
             {
+                while (!Console.KeyAvailable)
+                    await Task.Delay(10);
+
                 string cmd = (Console.ReadLine() ?? "").Trim();
 
                 if (cmd.ToLowerInvariant() == "q")
@@ -74,7 +80,7 @@ type 'q' to exit or '?' for help.
                 else if (cmd == "?")
                     @"
 
---------------------------------- HELP ---------------------------------
+--------------------------------------- HELP ---------------------------------------
 ?                       display this help text
 c                       clear console
 o <player>              makes <player> admin
@@ -90,10 +96,11 @@ l                       lists game players
 ll                      lists server players
 d                       reset game and deal cards
 g                       displays game information
+w <player>              emulates win notification for <player>
 
 vv                      toggles verbose output on/off
 q                       stop server
-------------------------------------------------------------------------
+------------------------------------------------------------------------------------
 
 ".Info(LogSource.Server);
                 else if (cmd.ToLowerInvariant() == "c")
@@ -143,6 +150,13 @@ q                       stop server
                             else
                                 $"Unknown player '{m.Groups["p"]}'.".Err(LogSource.Server);
                         },
+                        [R_WIN] = m =>
+                        {
+                            if (server.TryResolvePlayer(m.Groups["p"].Value) is Player player)
+                                server.NotifyAll(new CommunicationData_PlayerWin(player.UUID));
+                            else
+                                $"Unknown player '{m.Groups["p"]}'.".Err(LogSource.Server);
+                        },
                         [R_SAY] = m => server.NotifyAll(new CommunicationData_Notification(m.Groups["m"].Value)),
                         [R_ADD] = m =>
                         {
@@ -161,7 +175,7 @@ q                       stop server
                         // TODO
                     });
             }
-            while (true);
+            while (server.IsRunning);
 
             await server.Stop();
 
