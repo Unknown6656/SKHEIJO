@@ -3,11 +3,22 @@
         The following line is only used for local servers when creating the invitation code.
         The server is actually listening on "0.0.0.0" or "[::]".
     */
-    "secure": true,
     "address": "skheijo.dynv6.net",
-    "port_tcp": 42088,
-    "port_web": 42089,
-    "server_name": "Test Server 1234",
+    "port_tcp": 42087,
+    "port_ws": 42088,
+    "port_wss": 42089,
+    /*
+        If "local_server" is set to false, the server will ignore the "address"-field and instead
+        use the public ip address fetched from https://api64.ipify.org/.
+    */
+    "local_server": true,
+    /*
+        Use a value of  null  for "certificate_path", if you do not want to use wss:// instead
+        of ws://. The certificate path must point to a valid x509 PFX/PKSC12 certificate
+    */
+    "certificate_path": "skheijo.pfx",
+    "pfx_password": "skheijo",
+    "server_name": "SKHEIJO Server",
     "banned_names": [
         "admin",
         "server"
