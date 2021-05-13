@@ -579,9 +579,12 @@ body.ready #background-container {
 #instruction-selector .tab-selector .tab {
     border-right: 1px solid var(--color-fg);
     background-color: var(--color-bg);
+    justify-content: center;
+    align-items: center;
     font-weight: bold;
     cursor: pointer;
-    padding: 10px;
+    min-width: 70px;
+    display: flex;
 }
 
 #instruction-selector .tab-container {
