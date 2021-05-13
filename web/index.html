@@ -61,6 +61,100 @@
                     </tr>
                 </table>
             </div>
+            <div id="unblock-container" class="hidden">
+                <div id="unblock-instructions">
+                    <h1>Certificate unblock instructions</h1>
+                    <div id="instruction-selector">
+                        <div class="tab-selector">
+                            <div class="tab active" data-tab="chrome">Chrome</div>
+                            <div class="tab" data-tab="safari">Safari</div>
+                            <div class="tab" data-tab="firefox">Firefox</div>
+                        </div>
+                        <div class="tab-container">
+                            <div class="tab" data-tab="chrome">
+                                <ol>
+                                    <li>Navigate to <a class="unblock-url" target="_blank" href></a>.</li>
+                                    <li>
+                                        You will be confronted with the following error message:
+                                        <br/>
+                                        <img src="img/certificate-instructions/chrome-1.png"/>
+                                    </li>
+                                    <li>
+                                        Click on <kbd>Advanced</kbd>, and then on <kbd>Proceed to <span class="unblock-url"></span> (unsafe)</kbd>:
+                                        <br/>
+                                        <img src="img/certificate-instructions/chrome-2.png"/>
+                                    </li>
+                                    <li>
+                                        You should now see a message stating that <span class="unblock-url"></span> is not returning any data:
+                                        <br/>
+                                        <img src="img/certificate-instructions/chrome-3.png"/>
+                                        <br/>
+                                        This means that everything is working as intended.
+                                        You may now close the opened tab and reload this page.
+                                        Contact the server administrator should the error still persist after a page reload.
+                                    </li>
+                                </ol>
+                            </div>
+                            <div class="tab hidden" data-tab="firefox">
+                                <ol>
+                                    <li>Navigate to <a class="unblock-url" target="_blank" href></a>.</li>
+                                    <li>
+                                        You will be confronted with the following error message:
+                                        <br/>
+                                        <img src="img/certificate-instructions/firefox-1.png"/>
+                                    </li>
+                                    <li>
+                                        Click on <kbd>Advanced ...</kbd>, and then on <kbd>Accept the Risk and Continue</kbd>:
+                                        <br/>
+                                        <img src="img/certificate-instructions/firefox-2.png"/>
+                                    </li>
+                                    <li>
+                                        You should now see a message stating that an error occurred while connecting to <span class="unblock-url"></span>:
+                                        <br/>
+                                        <img src="img/certificate-instructions/firefox-3.png"/>
+                                        <br/>
+                                        This means that everything is working as intended.
+                                        You may now close the opened tab and reload this page.
+                                        Contact the server administrator should the error still persist after a page reload.
+                                    </li>
+                                </ol>
+                            </div>
+                            <div class="tab hidden" data-tab="safari">
+                                <ol>
+                                    <li>Navigate to <a class="unblock-url" target="_blank" href></a>.</li>
+                                    <li>
+                                        You will be confronted with the following error message:
+                                        <br/>
+                                        <img src="img/certificate-instructions/safari-1.png"/>
+                                    </li>
+                                    <li>
+                                        Click on <kbd>Show Details</kbd>, and then on <kbd>visit this website</kbd>:
+                                        <br/>
+                                        <img src="img/certificate-instructions/safari-2.png"/>
+                                    </li>
+                                    <li>
+                                        Confirm that you want to visit the site:
+                                        <br/>
+                                        <img src="img/certificate-instructions/safari-3.png"/>
+                                    </li>
+                                    <li>
+                                        You should now see a message stating that the connection to <span class="unblock-url"></span> was lost:
+                                        <br/>
+                                        <img src="img/certificate-instructions/safari-4.png"/>
+                                        <br/>
+                                        This means that everything is working as intended.
+                                        You may now close the opened tab and reload this page.
+                                        Contact the server administrator should the error still persist after a page reload.
+                                    </li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <p>
+                        <button id="close-unblock-container">Close instructions</button>
+                    </p>
+                </div>
+            </div>
             <div id="login-container" class="hidden">
                 <div id="login-form">
                     <div id="login-decoration">
@@ -80,13 +174,26 @@
                             </h1>
                             <p>
                                 The connection code seems to be invalid or the game server could not be contacted.
-                                Please verify that you entered the code correctly and that your internet connection is stable.
-                            </p>
-                            <p>
-                                Consider contacting the person who gave you the connection code should this error persist over multiple retries.
-                                The reason could be that the game server is experiencing some down times.
-                                Furhtermore, the game server needs to be accessible to the wider internet.
-                                A connection failure may indicate that the server is inacessible due to firewall restrictions.
+                                Please try the following options should this issue persist over multiple retries:
+                                <ul>
+                                    <li>Verify that you entered the code correctly and that your internet connection is stable.</li>
+                                    <li class="unblock-hint">
+                                        This site uses an encryption certificate.
+                                        Your web browser might be blocking the certificate for security reasons.
+                                        <br/>
+                                        <button id="unblock-cerificate">See instructions for un-blocking the certificate</button>
+                                    </li>
+                                    <li class="unblock-hint">
+                                        Try using the un-encrypted variant of the site:
+                                        <a class="insecure-url" href></a>
+                                    </li>
+                                    <li>
+                                        Contact the person who gave you the connection code and/or the person who manages the game server.
+                                        The reason could be that the game server is experiencing some down times.
+                                        Furhtermore, the game server needs to be accessible to the wider internet.
+                                        A connection failure may indicate that the server is inacessible due to firewall restrictions.
+                                    </li>
+                                </ul>
                             </p>
                             <button id="login-failed-dismiss">Dismiss message</button>
                         </span>
@@ -263,6 +370,7 @@
                             <button class="share" data-service="email">E-Mail</button>
                             <button class="share" data-service="native">Share ...</button>
                         </div>
+                        <div class="qr-wrapper"></div>
                     </div>
                     <div class="menu-content hidden" data-tab="help">
                         <h1>Help / About</h1>
@@ -316,6 +424,7 @@
         <script type="text/javascript" src="js/jquery-ui.min.js"></script>
         <script type="text/javascript" src="js/jquery-ui-touch.min.js"></script>
         <script type="text/javascript" src="js/confetti.js"></script>
+        <script type="text/javascript" src="js/qrcode.js"></script>
         <script type="text/javascript" src="js/uuid.js"></script>
         <script type="text/javascript" src="js/browser.js"></script>
         <script type="text/javascript" src="js/script.js"></script>
