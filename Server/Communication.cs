@@ -17,6 +17,8 @@ using Fleck;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Authentication;
 
 namespace SKHEIJO
 {
@@ -46,38 +48,32 @@ namespace SKHEIJO
 
     public sealed class ConnectionString
     {
-        public (ushort CSharp, ushort Web) Ports { get; }
+        public (ushort CSharp, ushort WS, ushort WSS) Ports { get; }
         public string Address { get; }
         public bool IsIPv6 { get; }
 
 
-        public ConnectionString(IPAddress address, ushort port_csharp, ushort port_web)
-            : this(address, (port_csharp, port_web))
+        public ConnectionString(IPAddress address, ushort port_csharp, ushort port_ws, ushort port_wss)
+            : this(address.ToString(), port_csharp, port_ws, port_wss, address.AddressFamily is AddressFamily.InterNetworkV6)
         {
         }
 
-        public ConnectionString(IPAddress address, (ushort csharp, ushort web) ports)
-            : this(address.ToString(), ports, address.AddressFamily is AddressFamily.InterNetworkV6)
-        {
-        }
-
-        public ConnectionString(string address, ushort port_csharp, ushort port_web, bool is_v6 = false)
-            : this(address, (port_csharp, port_web), is_v6)
-        {
-        }
-
-        public ConnectionString(string address, (ushort csharp, ushort web) ports, bool is_v6 = false)
+        public ConnectionString(string address, ushort port_csharp, ushort port_ws, ushort port_wss, bool is_v6 = false)
         {
             Address = address;
-            Ports = ports;
+            Ports = (port_csharp, port_ws, port_wss);
             IsIPv6 = is_v6;
         }
+
+        public ConnectionString With(IPAddress address) => new(address, Ports.CSharp, Ports.WS, Ports.WSS);
+
+        public ConnectionString With(string address) => new(address, Ports.CSharp, Ports.WS, Ports.WSS);
 
         public override int GetHashCode() => ToString().GetHashCode();
 
         public override bool Equals(object? obj) => obj is ConnectionString cs && cs.ToString() == ToString();
 
-        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.Web}${(IsIPv6 ? 1 : 0)}").ToBase64();
+        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.WS}${Ports.WSS}${(IsIPv6 ? 1 : 0)}").ToBase64();
 
         public static ConnectionString FromString(string connection_string)
         {
@@ -87,20 +83,18 @@ namespace SKHEIJO
                 parts[0],
                 ushort.Parse(parts[1]),
                 ushort.Parse(parts[2]),
-                parts[3] == "1"
+                ushort.Parse(parts[3]),
+                parts[4] == "1"
             );
         }
 
-        public static async Task<ConnectionString> GetMyConnectionString(ushort port_csharp, ushort port_web) =>
-            await GetMyConnectionString((port_csharp, port_web));
-
-        public static async Task<ConnectionString> GetMyConnectionString((ushort csharp, ushort web) ports)
+        public static async Task<ConnectionString> GetMyConnectionString(ushort port_csharp, ushort port_ws, ushort port_wss)
         {
             using HttpClient client = new();
             string html = await client.GetStringAsync("https://api64.ipify.org/");
             IPAddress ip = IPAddress.Parse(html);
 
-            return new(ip, ports);
+            return new(ip, port_csharp, port_ws, port_wss);
         }
 
         public static implicit operator string(ConnectionString c) => c.ToString();
@@ -256,6 +250,7 @@ namespace SKHEIJO
         public Game? CurrentGame { get; private set; }
         public ConnectionString ConnectionString { get; }
         public WebSocketServer WebSocketServer { get; }
+        public WebSocketServer? WebSocketServerSSL { get; }
         public TcpListener TCPListener { get; }
         public HashSet<string> BannedNames { get; }
         public string ServerName { get; }
@@ -271,9 +266,9 @@ namespace SKHEIJO
         public event Action<Player>? OnPlayerLeft;
 
 
-        private GameServer(ConnectionString connection_string, string server_name, bool secure)
+        private GameServer(ConnectionString connection_string, ServerConfig config)
         {
-            ServerName = server_name;
+            ServerName = config.server_name;
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
             CurrentGame = null;
@@ -281,14 +276,25 @@ namespace SKHEIJO
             _incoming = new();
             _outgoing = new();
             AdminUUIDs = new();
-
             TCPListener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Ports.CSharp));
-            WebSocketServer = new($"{(secure ? "wss" : "ws")}://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.Web}", true);
+            WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WS}", true);
             WebSocketServer.ListenerSocket.NoDelay = true;
             WebSocketServer.RestartAfterListenError = true;
+            WebSocketServer.EnabledSslProtocols = SslProtocols.Ssl3 | SslProtocols.Ssl2 | SslProtocols.Tls12 | SslProtocols.Tls11 | SslProtocols.Tls;
 
-            if (secure)
-                WebSocketServer.Certificate = 
+            if (config.certificate_path is string path)
+            {
+                WebSocketServerSSL = new($"wss://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WSS}", true);
+                WebSocketServerSSL.ListenerSocket.NoDelay = WebSocketServer.ListenerSocket.NoDelay;
+                WebSocketServerSSL.RestartAfterListenError = WebSocketServer.RestartAfterListenError;
+                WebSocketServerSSL.EnabledSslProtocols = WebSocketServer.EnabledSslProtocols;
+                WebSocketServerSSL.Certificate = new X509Certificate2(path, config.pfx_password);
+            }
+
+            AddBannedNames(config.banned_names);
+            AdminUUIDs ??= new();
+
+            config?.admin_uuids?.Do(u => AdminUUIDs.Add(u));
         }
 
         public void Start()
@@ -301,6 +307,7 @@ namespace SKHEIJO
 
                 TCPListener.Start();
                 WebSocketServer.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
+                WebSocketServerSSL?.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
 
                 Task.Factory.StartNew(async delegate
                 {
@@ -349,7 +356,12 @@ namespace SKHEIJO
             }
         }
 
-        public void Dispose() => Stop().GetAwaiter().GetResult();
+        public void Dispose()
+        {
+            Stop().GetAwaiter().GetResult();
+            WebSocketServer.Dispose();
+            WebSocketServerSSL?.Dispose();
+        }
 
         public void AddBannedNames(IEnumerable<string> names)
         {
@@ -886,26 +898,25 @@ namespace SKHEIJO
 
         #endregion
 
-        private static GameServer CreateLocalGameServer(ConnectionString connstr, ServerConfig config)
-        {
-            GameServer server = new(connstr, config.server_name, config.secure);
-
-            server.AddBannedNames(config.banned_names);
-            server.AdminUUIDs ??= new();
-
-            config?.admin_uuids?.Do(u => server.AdminUUIDs.Add(u));
-
-            return server;
-        }
-
-        public static GameServer CreateLocalGameServer(ServerConfig config) => CreateLocalGameServer(new(config.address, config.port_tcp, config.port_web), config);
-
         public static async Task<GameServer> CreateGameServer(ServerConfig config) =>
-             CreateLocalGameServer(await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_web), config);
+            new(config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
+                                    : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
     }
 
-    public sealed record ServerConfig(string address, bool secure, ushort port_tcp, ushort port_web, string server_name, string[] banned_names, Guid[]? admin_uuids);
+    public sealed record ServerConfig(
+        string address,
+        ushort port_tcp,
+        ushort port_ws,
+        ushort port_wss,
+        bool local_server,
+        string? certificate_path,
+        string pfx_password,
+        string server_name,
+        string[] banned_names,
+        Guid[]? admin_uuids
+    );
 
+    [Obsolete]
     public sealed class GameClient
         : IDisposable
     {

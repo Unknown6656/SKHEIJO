@@ -30,14 +30,12 @@ namespace Server
             string settings_path = $"{ASM_DIR.FullName}/server-config.json";
             ServerConfig? config = From.File(settings_path).ToJSON<ServerConfig>();
 
-            config ??= new("0.0.0.0", 42088, 42089, "test server", new string[] { "admin", "server" }, Array.Empty<Guid>());
+            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, Array.Empty<Guid>());
 
-            // using GameServer server = await GameServer.CreateGameServer(config);
-            using GameServer server = GameServer.CreateLocalGameServer(config);
+            using GameServer server = await GameServer.CreateGameServer(config);
             IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
-            (string a, ConnectionString c)[] conn_str = dns_entry.AddressList.Select(a => (a.ToString(), new ConnectionString(a, server.ConnectionString.Ports))).Concat(
-                                                        dns_entry.Aliases.Select(a => (a, new ConnectionString(a, server.ConnectionString.Ports)))).ToArray();
-
+            (string a, ConnectionString c)[] conn_str = dns_entry.AddressList.Select(a => (a.ToString(), server.ConnectionString.With(a))).Concat(
+                                                        dns_entry.Aliases.Select(a => (a, server.ConnectionString.With(a)))).ToArray();
 
             Console.WriteLine($@"
 ----------------------------------------------------------------------------------------
