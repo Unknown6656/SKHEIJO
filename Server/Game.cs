@@ -6,7 +6,6 @@ using System;
 
 using Unknown6656.Common;
 using System.Data.Common;
-using System.Numerics;
 
 namespace SKHEIJO
 {
@@ -44,12 +43,12 @@ namespace SKHEIJO
         public static bool operator >(Card left, Card right) => left.CompareTo(right) > 0;
 
         public static bool operator >=(Card left, Card right) => left.CompareTo(right) >= 0;
-
-        // TODO : +/-/++/-- etc.?
     }
 
     public sealed class PlayerState
     {
+        public static (int rows, int columns) InitialDimensions = (2, 2);// (3, 4);
+
         public Game Game { get; }
         public Player Player { get; }
         public (int rows, int columns) Dimensions;
@@ -67,7 +66,7 @@ namespace SKHEIJO
         {
             Game = game;
             Player = player;
-            Dimensions = (rows: 3, columns: 4);
+            Dimensions = InitialDimensions;
             GameField = new (Card, bool)[Dimensions.rows, Dimensions.columns];
         }
 
@@ -151,7 +150,7 @@ namespace SKHEIJO
 
         public Card? DiscardedCard => DiscardPile.TryPeek(out Card card) ? card : null;
 
-        public PlayerState CurrentPlayer => Players[CurrentPlayerIndex];
+        public PlayerState? CurrentPlayer => CurrentPlayerIndex >= 0 && CurrentPlayerIndex < Players.Count ? Players[CurrentPlayerIndex] : null;
 
 
         public event Action<Game, Player>? OnPlayerAdded;
@@ -163,7 +162,7 @@ namespace SKHEIJO
         {
             Players = (players ?? Array.Empty<Player>()).ToList(p => new PlayerState(this, p));
             CurrentGameState = GameState.Stopped;
-            CurrentPlayerIndex = 0;
+            NextPlayer(0);
             DrawPile = new();
             DiscardPile = new();
         }
@@ -199,7 +198,7 @@ namespace SKHEIJO
                 if (player.Equals(_final_round_initiator))
                     _final_round_initiator = null;
 
-                if (CurrentPlayerIndex == index && CurrentPlayer.CurrentlyDrawnCard is Card card)
+                if (CurrentPlayerIndex == index && CurrentPlayer?.CurrentlyDrawnCard is Card card)
                     DiscardPile.Push(card);
                 else if (CurrentPlayerIndex > index)
                     --CurrentPlayerIndex;
@@ -226,7 +225,9 @@ namespace SKHEIJO
         public int NextPlayer(int player_index)
         {
             CurrentPlayerIndex = Players.Count == 0 ? 0 : (player_index + Players.Count) % Players.Count;
-            WaitingFor = GameWaitingFor.Draw;
+
+            if (CurrentPlayer?.VisibleCount is int visible)
+                WaitingFor = visible < 2 ? GameWaitingFor.Uncover : GameWaitingFor.Draw;
 
             $"Next player: {CurrentPlayerIndex}".Log(LogSource.Game);
 
@@ -237,7 +238,7 @@ namespace SKHEIJO
         {
             "Restarting game ...".Log(LogSource.Game);
 
-            total_cards = Math.Max(total_cards, Players.Count * 15 + 30);
+            total_cards = Math.Max(Math.Max(total_cards, 150), Players.Count * 15 + 30);
 
             Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card(i % 15 - 2))).ToArray();
 
@@ -250,7 +251,7 @@ namespace SKHEIJO
                 PlayerState player = Players[i];
 
                 player.CurrentlyDrawnCard = null;
-                player.Dimensions = (rows: 3, columns: 4);
+                player.Dimensions = PlayerState.InitialDimensions;
                 player.GameField = new (Card, bool)[player.Dimensions.rows, player.Dimensions.columns];
 
                 for (int row = 0; row < player.Dimensions.rows; ++row)
@@ -273,7 +274,7 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___SwapDrawn(int row, int column)
         {
-            if (WaitingFor == GameWaitingFor.Play && CurrentPlayer.CurrentlyDrawnCard is Card drawn)
+            if (WaitingFor == GameWaitingFor.Play && CurrentPlayer?.CurrentlyDrawnCard is Card drawn)
             {
                 $"Current: swap drawn card with {row}-{column}".Log(LogSource.Game);
 
@@ -289,7 +290,7 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___DiscardDrawn()
         {
-            if (WaitingFor is GameWaitingFor.Discard or GameWaitingFor.Play && CurrentPlayer.CurrentlyDrawnCard is Card card)
+            if (WaitingFor is GameWaitingFor.Discard or GameWaitingFor.Play && CurrentPlayer?.CurrentlyDrawnCard is Card card)
             {
                 "Current: discard drawn".Log(LogSource.Game);
 
@@ -305,12 +306,16 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___UncoverCard(int row, int column)
         {
-            if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer.GameField[row, column] is { card: Card card, visible: false })
+            if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer?.GameField[row, column] is { card: Card card, visible: false })
             {
                 $"Current: uncover card {row}-{column}".Log(LogSource.Game);
 
                 CurrentPlayer.GameField[row, column] = (card, true);
-                WaitingFor = GameWaitingFor.NextPlayer;
+
+                if (CurrentPlayer.VisibleCount < 2)
+                    OnGameStateChanged?.Invoke(this);
+                else
+                    WaitingFor = GameWaitingFor.NextPlayer;
 
                 return true;
             }
@@ -320,7 +325,7 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___DrawCard(bool from_discard_pile)
         {
-            if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer.CurrentlyDrawnCard is null)
+            if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer is { CurrentlyDrawnCard: null })
             {
                 $"Current: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
 
@@ -335,29 +340,28 @@ namespace SKHEIJO
 
         public void CurrentPlayer___RemoveFullColumnsOfIdenticalCards(out int column_count)
         {
-            PlayerState player = CurrentPlayer;
-
             column_count = 0;
 
-            for (int col = 0; col < player.Dimensions.columns; ++col)
-            {
-                Card[] cards = (from row in Enumerable.Range(0, player.Dimensions.rows)
-                                let item = player.GameField[row, col]
-                                where item.visible
-                                select item.card).Distinct().ToArray();
-
-                if (Enumerable.Range(0, player.Dimensions.rows).All(row => player.GameField[row, col].visible))
+            if (CurrentPlayer is PlayerState player)
+                for (int col = 0; col < player.Dimensions.columns; ++col)
                 {
-                    $"Removing identical stack {col} from {player}".Log(LogSource.Game);
+                    (Card card, bool remove) = player.GameField[0, col];
 
-                    player.RemoveColumn(col);
+                    for (int row = 1; remove && row < player.Dimensions.rows; ++row)
+                        remove &= player.GameField[row, col].visible && card == player.GameField[row, col].card;
 
-                    ++column_count;
-                    --col;
+                    if (remove)
+                    {
+                        $"Removing identical stack {col} from {player}".Log(LogSource.Game);
 
-                    OnGameStateChanged?.Invoke(this);
+                        player.RemoveColumn(col);
+
+                        ++column_count;
+                        --col;
+
+                        OnGameStateChanged?.Invoke(this);
+                    }
                 }
-            }
         }
 
         public bool CurrentPlayer___FinishesFinalRound()
@@ -369,7 +373,7 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___TryEnterFinalRound()
         {
-            if (CurrentGameState is GameState.Running && CurrentPlayer.IsFull)
+            if (CurrentGameState is GameState.Running && (CurrentPlayer?.IsFull ?? false))
             {
                 _final_round_initiator = CurrentPlayer.Player;
                 CurrentGameState = GameState.FinalRound;
@@ -396,7 +400,6 @@ namespace SKHEIJO
 
             return GetCurrentLeaderBoard();
         }
-
     }
 
     public enum GameState
