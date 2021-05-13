@@ -148,7 +148,11 @@ function decode_connection_string(conn_string)
         const parts = atob(conn_string).split('$');
 
         if (parts.length > 2)
-            return parts[0] + ':' + parts[2];
+            return {
+                address: parts[0],
+                ws: parts[2],
+                wss: parts[3],
+            };
     }
     catch (e)
     {
@@ -629,7 +633,7 @@ function update_game_field(data)
             <p>
                 You are currently observing a (stopped) game.
                 <br/>
-                Use the [JOIN GAME]-button to join the game.
+                Use the <kbd>Join Game</kbd>-button to join the game.
             </p>
         `);
     }
@@ -908,31 +912,64 @@ $('#login-string').keypress(function(e) {
 
 $('#login-start').click(function()
 {
-    let string = $('#login-string').val();
-    let target = decode_connection_string(string);
-    let share_url = `${current_url.origin}${current_url.pathname}?code=${string}`;
+    const string = $('#login-string').val();
+    const target = decode_connection_string(string);
+    const share_url = `${current_url.origin}${current_url.pathname}?code=${string}`;
 
     window.localStorage.setItem(STORAGE_CONN_STRING, string);
 
-    $('#share-url').attr('href', share_url)
-                   .html(share_url);
+    $('#share-url').attr('href', share_url).html(share_url);
+    $('.qr-wrapper').html('<div id="qr-code"></div>');
+
+    new QRCode("qr-code", {
+        text: share_url,
+        width: 300,
+        height: 300,
+        colorDark : 'black',
+        colorLight : 'transparent',
+        correctLevel : QRCode.CorrectLevel.H
+    });
 
     if (socket === undefined && target !== undefined)
     {
+        const secure = current_url.protocol.indexOf('s') != -1;
+        const cert_url = `${current_url.protocol}//${target.address}:${target.wss}/`;
+        const http_url = `http://${current_url.hostname}:80${current_url.pathname}?code=${string}`;
+
+        if (secure)
+            $('.unblock-hint').show();
+        else
+            $('.unblock-hint').hide();
+
         $('#login-form').addClass('loading');
+        $('.unblock-url').html(cert_url).attr('href', cert_url);
+        $('.insecure-url').html(http_url).attr('href', http_url);
 
         setTimeout(function()
         {
             incoming_queue = new Array();
             outgoing_queue = new Array();
-            socket = new WebSocket(`ws://${target}`);
-            socket.onclose = socket_close;
-            socket.onopen = socket_open;
-            socket.onmessage = e => incoming_queue.push(JSON.parse(e.data));
-            socket.onerror = socket_error;
+
+            try
+            {
+                socket = new WebSocket(`${secure ? 'wss' : 'ws'}://${target.address}:${secure ? target.wss : target.ws}`);
+                socket.onclose = socket_close;
+                socket.onopen = socket_open;
+                socket.onmessage = e => incoming_queue.push(JSON.parse(e.data));
+                socket.onerror = socket_error;
+            }
+            catch (e)
+            {
+                socket_close();
+                $('#login-form').addClass('failed');
+            }
         }, 350);
     }
 });
+
+$('#unblock-cerificate').click(() => $('#unblock-container').removeClass('hidden'));
+
+$('#close-unblock-container').click(() => $('#unblock-container').addClass('hidden'));
 
 $('#login-failed-dismiss').click(() => $('#login-form').removeClass('failed'));
 
@@ -962,6 +999,18 @@ $('#username-apply').click(() =>
         else
             $('#username-error').html(response.Message);
     });
+});
+
+$('#instruction-selector .tab-selector .tab[data-tab]').click(function()
+{
+    const elem = $(this);
+    const tab = elem.attr('data-tab');
+    const content = $(`#instruction-selector .tab-container .tab[data-tab="${tab}"]`);
+
+    elem.addClass('active');
+    elem.siblings().removeClass('active');
+    content.siblings().addClass('hidden');
+    content.removeClass('hidden');
 });
 
 $('.menu-bar .menu-item[data-tab]').click(function()
