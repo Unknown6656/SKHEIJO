@@ -23,8 +23,9 @@ namespace Server
         public static async Task Main(string[] args)
         {
             Console.Clear();
-
-            Logger.MinimumSeverityLevel = LogSeverity.Info;
+            Logger.MinimumSeverityLevelForAll = LogSeverity.Debug;
+            Logger.MinimumSeverityLevel[LogSource.Server] = LogSeverity.Info;
+            Logger.MinimumSeverityLevel[LogSource.WebServer] = LogSeverity.Info;
             Logger.Start();
 
             string settings_path = $"{ASM_DIR.FullName}/server-config.json";
@@ -96,7 +97,6 @@ d                       reset game and deal cards
 g                       displays game information
 w <player>              emulates win notification for <player>
 
-vv                      toggles verbose output on/off
 q                       stop server
 ------------------------------------------------------------------------------------
 
@@ -107,8 +107,6 @@ q                       stop server
                     server.ResetNewGame();
                 else if (cmd.ToLowerInvariant() == "aa")
                     server.TryAddAllConnectedPlayersToGame();
-                else if (cmd.ToLowerInvariant() == "vv")
-                    Logger.MinimumSeverityLevel = Logger.MinimumSeverityLevel == LogSeverity.Debug ? LogSeverity.Info : LogSeverity.Debug;
                 else if (cmd.ToLowerInvariant() == "ll")
                     ($"{server._players} Players:\n- " + server._players.Select(kvp => kvp.Value).StringJoin("\n- ")).Info(LogSource.Server);
                 else if (cmd.ToLowerInvariant() == "l")

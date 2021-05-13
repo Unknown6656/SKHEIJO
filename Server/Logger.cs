@@ -4,6 +4,8 @@ using System;
 
 using Fleck;
 
+using Unknown6656.Common;
+
 namespace SKHEIJO
 {
     public enum LogSeverity
@@ -30,34 +32,25 @@ namespace SKHEIJO
         private static readonly ConcurrentQueue<(DateTime time, LogSource source, LogSeverity severity, string msg)> _queue = new();
         private static readonly ConsoleColor _initial_color = ConsoleColor.Gray;
         private static readonly object _mutex = new();
-        private static LogSeverity _level = LogSeverity.Debug;
 
 
         public static bool IsRunning { get; private set; }
 
-        public static LogSeverity MinimumSeverityLevel
-        {
-            get => _level;
-            set
-            {
-                _level = value;
+        public static ConcurrentDictionary<LogSource, LogSeverity> MinimumSeverityLevel { get; }
 
-                FleckLog.Level = value switch
-                {
-                    LogSeverity.Info => LogLevel.Info,
-                    LogSeverity.Warning => LogLevel.Warn,
-                    LogSeverity.Error => LogLevel.Error,
-                    _ => LogLevel.Debug,
-                };
-            }
+        public static LogSeverity MinimumSeverityLevelForAll
+        {
+            set => LINQ.GetEnumValues<LogSource>().Do(s => MinimumSeverityLevel[s] = value);
         }
 
 
         static Logger()
         {
             _initial_color = Console.ForegroundColor;
-            MinimumSeverityLevel = LogSeverity.Debug;
+            MinimumSeverityLevel = new();
 
+            LINQ.GetEnumValues<LogSource>().Do(s => MinimumSeverityLevel[s] = LogSeverity.Debug);
+            FleckLog.Level = LogLevel.Debug;
             FleckLog.LogAction = LogWebsocket;
         }
 
@@ -100,7 +93,7 @@ namespace SKHEIJO
             {
                 any = true;
 
-                if (item.severity >= MinimumSeverityLevel)
+                if (MinimumSeverityLevel[item.source] <= item.severity)
                     lock (_mutex)
                     {
                         (ConsoleColor color, string prefix) = item.severity switch
