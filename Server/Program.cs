@@ -31,7 +31,7 @@ namespace Server
             string settings_path = $"{ASM_DIR.FullName}/server-config.json";
             ServerConfig? config = From.File(settings_path).ToJSON<ServerConfig>();
 
-            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, Array.Empty<Guid>());
+            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null);
 
             using GameServer server = await GameServer.CreateGameServer(config);
             IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
@@ -175,9 +175,12 @@ q                       stop server
 
             await server.Stop();
 
-            config = config with { admin_uuids = server.AdminUUIDs?.ToArray() ?? config.admin_uuids };
-
-            From.JSON(config).ToFile(settings_path);
+            From.JSON(config = config with
+            {
+                admin_uuids = server.AdminUUIDs?.ToArray() ?? config.admin_uuids,
+                banned_names = server.BannedNames.ToArray(),
+                high_scores = server.HighScores.ToArray(),
+            }).ToFile(settings_path);
 
             await Logger.Stop();
         }
