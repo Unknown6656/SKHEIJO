@@ -5,7 +5,6 @@ using System.Text;
 using System;
 
 using Unknown6656.Common;
-using System.Data.Common;
 
 namespace SKHEIJO
 {
@@ -47,7 +46,7 @@ namespace SKHEIJO
 
     public sealed class PlayerState
     {
-        public static (int rows, int columns) InitialDimensions = (2, 2);// (3, 4);
+        public static (int rows, int columns) InitialDimensions = (3, 4);
 
         public Game Game { get; }
         public Player Player { get; }
@@ -103,18 +102,34 @@ namespace SKHEIJO
         public override bool Equals(object? obj) => Player.Equals((obj as PlayerState)?.Player);
     }
 
+    public enum Pile
+    {
+        Draw = 0,
+        Discard = 1,
+        CurrentlyDrawn = 2,
+        User = 3,
+    }
+
+    public sealed record CardLocation(Pile Pile, int OptionalRow, int OptionalColumn)
+    {
+        public CardLocation(Pile Pile)
+            : this(Pile, 0, 0)
+        {
+        }
+    }
+
     public sealed class Game
     {
         public static int MAX_PLAYERS = 10;
 
         private GameState _state;
         private GameWaitingFor _waiting;
-        private Player? _final_round_initiator;
 
         public Stack<Card> DrawPile { get; }
         public Stack<Card> DiscardPile { get; }
         public List<PlayerState> Players { get; }
         public int CurrentPlayerIndex { get; private set; }
+        public Player? FinalRoundInitiator { get; private set; }
 
         public GameState CurrentGameState
         {
@@ -153,6 +168,9 @@ namespace SKHEIJO
         public PlayerState? CurrentPlayer => CurrentPlayerIndex >= 0 && CurrentPlayerIndex < Players.Count ? Players[CurrentPlayerIndex] : null;
 
 
+        public event Action<Game, CommunicationData_AnimateColumnDeletion>? OnColumnDeleted;
+        public event Action<Game, CommunicationData_AnimateFlipCard>? OnCardFlipped;
+        public event Action<Game, CommunicationData_AnimateMoveCard>? OnCardMoved;
         public event Action<Game, Player>? OnPlayerAdded;
         public event Action<Game, Player>? OnPlayerRemoved;
         public event Action<Game>? OnGameStateChanged;
@@ -195,8 +213,8 @@ namespace SKHEIJO
             {
                 Player player = Players[index].Player;
 
-                if (player.Equals(_final_round_initiator))
-                    _final_round_initiator = null;
+                if (player.Equals(FinalRoundInitiator))
+                    FinalRoundInitiator = null;
 
                 if (CurrentPlayerIndex == index && CurrentPlayer?.CurrentlyDrawnCard is Card card)
                     DiscardPile.Push(card);
@@ -268,7 +286,7 @@ namespace SKHEIJO
 
             CurrentGameState = GameState.Running;
             NextPlayer(first_player);
-            _final_round_initiator = null;
+            FinalRoundInitiator = null;
         }
 
 
@@ -276,11 +294,14 @@ namespace SKHEIJO
         {
             if (WaitingFor == GameWaitingFor.Play && CurrentPlayer?.CurrentlyDrawnCard is Card drawn)
             {
-                $"Current: swap drawn card with {row}-{column}".Log(LogSource.Game);
+                $"{CurrentPlayer}: swap drawn card ({drawn}) with {row}-{column}".Log(LogSource.Game);
 
                 CurrentPlayer.CurrentlyDrawnCard = CurrentPlayer.GameField[row, column].card;
                 CurrentPlayer.GameField[row, column] = (drawn, true);
                 WaitingFor = GameWaitingFor.Discard;
+
+                OnCardMoved?.Invoke(this, new(CurrentPlayer.Player.UUID, new(Pile.CurrentlyDrawn), new(Pile.User, row, column), drawn, null));
+                OnCardMoved?.Invoke(this, new(CurrentPlayer.Player.UUID, new(Pile.User, row, column), new(Pile.CurrentlyDrawn), CurrentPlayer.CurrentlyDrawnCard.Value, null));
 
                 return true;
             }
@@ -290,13 +311,15 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___DiscardDrawn()
         {
-            if (WaitingFor is GameWaitingFor.Discard or GameWaitingFor.Play && CurrentPlayer?.CurrentlyDrawnCard is Card card)
+            if (WaitingFor is GameWaitingFor.Discard or GameWaitingFor.Play && CurrentPlayer is { CurrentlyDrawnCard: Card card } player)
             {
-                "Current: discard drawn".Log(LogSource.Game);
+                $"{player}: discard drawn: {card}".Log(LogSource.Game);
 
                 DiscardPile.Push(card);
-                CurrentPlayer.CurrentlyDrawnCard = null;
+                player.CurrentlyDrawnCard = null;
                 WaitingFor = WaitingFor is GameWaitingFor.Discard ? GameWaitingFor.NextPlayer : GameWaitingFor.Uncover;
+
+                OnCardMoved?.Invoke(this, new(player.Player.UUID, new(Pile.CurrentlyDrawn), new(Pile.Discard), card, null));
 
                 return true;
             }
@@ -308,7 +331,7 @@ namespace SKHEIJO
         {
             if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer?.GameField[row, column] is { card: Card card, visible: false })
             {
-                $"Current: uncover card {row}-{column}".Log(LogSource.Game);
+                $"{CurrentPlayer}: uncover card {row}-{column}: {card}".Log(LogSource.Game);
 
                 CurrentPlayer.GameField[row, column] = (card, true);
 
@@ -316,6 +339,8 @@ namespace SKHEIJO
                     OnGameStateChanged?.Invoke(this);
                 else
                     WaitingFor = GameWaitingFor.NextPlayer;
+
+                OnCardFlipped?.Invoke(this, new(CurrentPlayer.Player.UUID, row, column, card));
 
                 return true;
             }
@@ -327,10 +352,18 @@ namespace SKHEIJO
         {
             if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer is { CurrentlyDrawnCard: null })
             {
-                $"Current: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
+                $"{CurrentPlayer}: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
 
                 CurrentPlayer.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
                 WaitingFor = GameWaitingFor.Play;
+
+                OnCardMoved?.Invoke(this, new(
+                    CurrentPlayer.Player.UUID,
+                    new(from_discard_pile ? Pile.Discard : Pile.Draw),
+                    new(Pile.CurrentlyDrawn),
+                    CurrentPlayer.CurrentlyDrawnCard.Value,
+                    from_discard_pile && DiscardPile.Count > 1 ? DiscardPile.Skip(1).First() : null
+                ));
 
                 return true;
             }
@@ -354,6 +387,8 @@ namespace SKHEIJO
                     {
                         $"Removing identical stack {col} from {player}".Log(LogSource.Game);
 
+                        OnColumnDeleted?.Invoke(this, new(player.Player.UUID, col, Enumerable.Range(0, player.Dimensions.rows).Select(i => player.GameField[i, col].card).ToArray()));
+
                         player.RemoveColumn(col);
 
                         ++column_count;
@@ -368,19 +403,19 @@ namespace SKHEIJO
         {
             PlayerState next = Players[(CurrentPlayerIndex + 1 + Players.Count) % Players.Count];
 
-            return CurrentGameState is GameState.FinalRound && next.Player.Equals(_final_round_initiator) || next.IsFull;
+            return CurrentGameState is GameState.FinalRound && next.Player.Equals(FinalRoundInitiator) || next.IsFull;
         }
 
         public bool CurrentPlayer___TryEnterFinalRound()
         {
             if (CurrentGameState is GameState.Running && (CurrentPlayer?.IsFull ?? false))
             {
-                _final_round_initiator = CurrentPlayer.Player;
+                FinalRoundInitiator = CurrentPlayer.Player;
                 CurrentGameState = GameState.FinalRound;
 
                 // TODO : ???
 
-                $"{_final_round_initiator} entered final round".Log(LogSource.Game);
+                $"{FinalRoundInitiator} entered final round".Log(LogSource.Game);
 
                 return true;
             }
@@ -390,7 +425,7 @@ namespace SKHEIJO
 
         public (Player Player, int Points)[] GetCurrentLeaderBoard() => (from p in Players
                                                                          let player = p.Player
-                                                                         let points = p.VisiblePoints * (player.Equals(_final_round_initiator) ? 2 : 1)
+                                                                         let points = p.VisiblePoints * (player.Equals(FinalRoundInitiator) ? 2 : 1)
                                                                          orderby points ascending
                                                                          select (player, points)).ToArray();
 
