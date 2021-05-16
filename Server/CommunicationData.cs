@@ -4,8 +4,6 @@ using System.Linq;
 using System;
 
 using Unknown6656.Common;
-using System.Data.Common;
-using static SKHEIJO.CommunicationData_LeaderBoard;
 
 namespace SKHEIJO
 {
@@ -14,12 +12,6 @@ namespace SKHEIJO
         ServerShutdown = 0,
         Kicked = 1,
         // TODO : ?
-    }
-
-    public enum DrawSource
-    {
-        DrawPile = 0,
-        DiscardPile = 1
     }
 
     public abstract record CommunicationData
@@ -90,7 +82,8 @@ namespace SKHEIJO
         CommunicationData_GameUpdate.GameUpdatePlayerData[] Players,
         int CurrentPlayer,
         Card? EgoDrawnCard,
-        int MaxPlayers
+        int MaxPlayers,
+        Guid FinalRoundInitiator
     ) : CommunicationData
     {
         public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, Card? DrawnCard, int LeaderBoardIndex);
@@ -127,7 +120,14 @@ namespace SKHEIJO
     public sealed record CommunicationData_AdminMakeRegular(Guid UUID) : CommunicationData_AdminCommand;
 
     // client -> server
-    public sealed record CommunicationData_GameDraw(DrawSource Pile) : CommunicationData;
+    // server -> client
+    public sealed record CommunicationData_AdminInitialBoardSize(int Columns, int Rows) : CommunicationData_AdminCommand;
+
+    // client -> server
+    public sealed record CommunicationData_AdminRequestWinAnimation(Guid UUID) : CommunicationData_AdminCommand;
+
+    // client -> server
+    public sealed record CommunicationData_GameDraw(Pile Pile) : CommunicationData;
 
     // client -> server
     public sealed record CommunicationData_GameSwap(int Row, int Column) : CommunicationData;
@@ -142,9 +142,22 @@ namespace SKHEIJO
     public sealed record CommunicationData_PlayerWin(Guid UUID) : CommunicationData;
 
     // server -> client
-    public sealed record CommunicationData_LeaderBoard(LeaderBoardEntry[] LeaderBoard)
+    public sealed record CommunicationData_LeaderBoard(CommunicationData_LeaderBoard.LeaderBoardEntry[] LeaderBoard)
         : CommunicationData
     {
         public sealed record LeaderBoardEntry(Guid UUID, int Points);
     }
+
+    // server -> client
+    public sealed record CommunicationData_AnimateMoveCard(Guid UUID, CardLocation From, CardLocation To, Card Card, Card? Behind) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_AnimateFlipCard(Guid UUID, int Row, int Column, Card Card) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_AnimateColumnDeletion(Guid UUID, int Column, Card[] Cards) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_ServerHighScores(ServerConfig.HighScore[] HighScores) : CommunicationData;
 }
+
