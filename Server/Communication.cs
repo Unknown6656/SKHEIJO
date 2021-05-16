@@ -1,11 +1,13 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Security.Cryptography.X509Certificates;
+using System.Security.Authentication;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Diagnostics;
 using System.Net.Sockets;
-using System.Net.Http;
 using System.Text.Json;
+using System.Net.Http;
 using System.Text;
 using System.Linq;
 using System.Net;
@@ -17,8 +19,6 @@ using Fleck;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
-using System.Security.Cryptography.X509Certificates;
-using System.Security.Authentication;
 
 namespace SKHEIJO
 {
@@ -253,6 +253,7 @@ namespace SKHEIJO
         public WebSocketServer? WebSocketServerSSL { get; }
         public TcpListener TCPListener { get; }
         public HashSet<string> BannedNames { get; }
+        public ConcurrentStack<ServerConfig.HighScore> HighScores { get; }
         public string ServerName { get; }
         public bool IsRunning => _running != 0;
 
@@ -272,6 +273,7 @@ namespace SKHEIJO
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
             CurrentGame = null;
+            HighScores = new();
             _players = new();
             _incoming = new();
             _outgoing = new();
@@ -294,7 +296,10 @@ namespace SKHEIJO
             AddBannedNames(config.banned_names);
             AdminUUIDs ??= new();
 
-            config?.admin_uuids?.Do(u => AdminUUIDs.Add(u));
+            config.admin_uuids?.Do(u => AdminUUIDs.Add(u));
+
+            foreach (ServerConfig.HighScore hs in config.high_scores?.OrderByDescending(hs => hs.Points) as IEnumerable<ServerConfig.HighScore> ?? Array.Empty<ServerConfig.HighScore>())
+                HighScores.Push(hs);
         }
 
         public void Start()
@@ -383,6 +388,8 @@ namespace SKHEIJO
 
             if (CurrentGame is Game game)
                 BroadcastCurrentGameState(game, new[] { player });
+
+            Notify(player, new CommunicationData_ServerHighScores(HighScores.ToArray()));
         }
 
         private void RemovePlayer(Player player)
@@ -613,7 +620,7 @@ namespace SKHEIJO
             }
         }
 
-        private void OnWebsocketMessage(WebSocketConnection socket, Player player, Union<byte[], string> message)
+        private void OnWebsocketMessage(WebSocketConnection _, Player player, Union<byte[], string> message)
         {
             if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
                 _incoming.Enqueue((player, new(guid, message)));
@@ -695,8 +702,8 @@ namespace SKHEIJO
                         else
                             return CommunicationData_PlayerInfo.NotFound;
                     }
-                case CommunicationData_GameDraw(DrawSource source_pile):
-                    if (CurrentGame?.CurrentPlayer___DrawCard(source_pile is DrawSource.DiscardPile) ?? false)
+                case CommunicationData_GameDraw(Pile source_pile):
+                    if (CurrentGame?.CurrentPlayer___DrawCard(source_pile is Pile.Discard) ?? false)
                         return CommunicationData_SuccessError.OK;
                     else
                         return new CommunicationData_SuccessError(false, "Invalid game move.");
@@ -785,6 +792,21 @@ namespace SKHEIJO
                                 CurrentGame?.FinishGame();
 
                                 return CommunicationData_SuccessError.OK;
+                            case CommunicationData_AdminInitialBoardSize(int Columns, int Rows):
+                                if (Columns >= 2 && Rows >= 2)
+                                {
+                                    PlayerState.InitialDimensions = (Rows, Columns);
+
+                                    NotifyAll(admin_request);
+
+                                    return CommunicationData_SuccessError.OK;
+                                }
+                                else
+                                    return new CommunicationData_SuccessError(false, "The board must have an initial size of at least 2x2.");
+                            case CommunicationData_AdminRequestWinAnimation(Guid UUID):
+                                NotifyAll(new CommunicationData_PlayerWin(UUID));
+
+                                return CommunicationData_SuccessError.OK;
                             case CommunicationData_AdminServerStop:
                                 await Task.Factory.StartNew(Stop);
 
@@ -806,12 +828,18 @@ namespace SKHEIJO
                 current.OnPlayerAdded -= CurrentGame_OnPlayerAdded;
                 current.OnPlayerRemoved -= CurrentGame_OnPlayerRemoved;
                 current.OnGameStateChanged -= CurrentGame_OnGameStateChanged;
+                CurrentGame.OnColumnDeleted -= CurrentGame_OnColumnDeleted;
+                CurrentGame.OnCardFlipped -= CurrentGame_OnCardFlipped;
+                CurrentGame.OnCardMoved -= CurrentGame_OnCardMoved;
             }
 
             CurrentGame = new();
             CurrentGame.OnPlayerAdded += CurrentGame_OnPlayerAdded;
             CurrentGame.OnPlayerRemoved += CurrentGame_OnPlayerRemoved;
             CurrentGame.OnGameStateChanged += CurrentGame_OnGameStateChanged;
+            CurrentGame.OnColumnDeleted += CurrentGame_OnColumnDeleted;
+            CurrentGame.OnCardFlipped += CurrentGame_OnCardFlipped;
+            CurrentGame.OnCardMoved += CurrentGame_OnCardMoved;
 
             BroadcastCurrentGameState(CurrentGame);
         }
@@ -834,19 +862,29 @@ namespace SKHEIJO
 
         private void CurrentGame_OnGameStateChanged(Game game)
         {
+            game.CurrentPlayer___RemoveFullColumnsOfIdenticalCards(out _);
+
             if (game is { CurrentGameState: GameState.Running or GameState.FinalRound, WaitingFor: GameWaitingFor.NextPlayer })
                 if (game.CurrentPlayer___FinishesFinalRound())
                 {
-                    if (game.FinishGame().FirstOrDefault().Player is Player winner)
-                        NotifyAll(new CommunicationData_PlayerWin(winner.UUID));
-                }
-                else
-                {
-                    if (game.CurrentPlayer___TryEnterFinalRound())
-                        NotifyGamePlayers(new CommunicationData_Notification("Final game round!"));
+                    (Player Player, int Points)[] leaderboard = game.FinishGame();
+                    int highscore_count = HighScores.Count;
 
-                    game.NextPlayer();
+                    if (leaderboard.FirstOrDefault().Player is Player winner)
+                        NotifyAll(new CommunicationData_PlayerWin(winner.UUID));
+
+                    foreach ((Player player, int points) in leaderboard.Reverse())
+                        if (!HighScores.TryPeek(out ServerConfig.HighScore? highest) || highest.Points > points)
+                            HighScores.Push(new(player.UUID, this[player]?.Name, DateTime.Now, points));
+
+                    if (HighScores.Count != highscore_count)
+                        NotifyAll(new CommunicationData_ServerHighScores(HighScores.ToArray()));
                 }
+                // ELSE-IF is pretty important here because tryenterfinalround sets currentgamestate, which invokes this method, which in turn then calls 'next player'
+                else if (game.CurrentPlayer___TryEnterFinalRound())
+                    NotifyGamePlayers(new CommunicationData_Notification("Final game round!"));
+                else
+                    game.NextPlayer();
             else
                 BroadcastCurrentGameState(game);
         }
@@ -854,6 +892,12 @@ namespace SKHEIJO
         private void CurrentGame_OnPlayerRemoved(Game game, Player player) => NotifyAll(new CommunicationData_PlayerLeftGame(player.UUID));
 
         private void CurrentGame_OnPlayerAdded(Game game, Player player) => NotifyAll(new CommunicationData_PlayerJoinedGame(player.UUID));
+
+        private void CurrentGame_OnCardMoved(Game game, CommunicationData_AnimateMoveCard animation) => NotifyAllExcept(this[animation.UUID]!.Player, animation);
+
+        private void CurrentGame_OnCardFlipped(Game game, CommunicationData_AnimateFlipCard animation) => NotifyAll(animation);
+
+        private void CurrentGame_OnColumnDeleted(Game game, CommunicationData_AnimateColumnDeletion animation) => NotifyAll(animation);
 
         private void BroadcastCurrentGameState(Game game) => BroadcastCurrentGameState(game, _players.Keys);
 
@@ -879,7 +923,6 @@ namespace SKHEIJO
             });
 
             foreach (Player player in targets)
-            {
                 Notify(player, new CommunicationData_GameUpdate(
                     game.DrawPile.Count,
                     game.DiscardPile.Count,
@@ -889,11 +932,12 @@ namespace SKHEIJO
                     players,
                     game.CurrentGameState is GameState.Running or GameState.FinalRound ? game.CurrentPlayerIndex : -1,
                     game.Players.FirstOrDefault(p => p.Player == player)?.CurrentlyDrawnCard,
-                    Game.MAX_PLAYERS
+                    Game.MAX_PLAYERS,
+                    game.FinalRoundInitiator?.UUID ?? Guid.Empty
                 ));
-            }
 
             NotifyAll(new CommunicationData_LeaderBoard(game.GetCurrentLeaderBoard().ToArray(t => new CommunicationData_LeaderBoard.LeaderBoardEntry(t.Player.UUID, t.Points))));
+            NotifyAll(new CommunicationData_AdminInitialBoardSize(PlayerState.InitialDimensions.columns, PlayerState.InitialDimensions.rows));
         }
 
         #endregion
@@ -913,8 +957,12 @@ namespace SKHEIJO
         string pfx_password,
         string server_name,
         string[] banned_names,
-        Guid[]? admin_uuids
-    );
+        Guid[]? admin_uuids,
+        ServerConfig.HighScore[]? high_scores
+    )
+    {
+        public sealed record HighScore(Guid UUID, string? LastName, DateTime Date, int Points);
+    }
 
     [Obsolete]
     public sealed class GameClient
@@ -1062,8 +1110,8 @@ namespace SKHEIJO
 
             if (Player.Client?.Is(out client) ?? false)
             {
-                client.Close();
-                client.Dispose();
+                client?.Close();
+                client?.Dispose();
             }
         }
     }
