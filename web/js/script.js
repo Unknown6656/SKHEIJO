@@ -29,13 +29,21 @@ const TYPE_GAME_DISCARD = 'GameDiscard';
 const TYPE_GAME_UNCOVER = 'GameUncover';
 const TYPE_PLAYER_WIN = 'PlayerWin';
 const TYPE_LEADERBOARD = 'LeaderBoard';
+const TYPE_BOARD_SIZE = 'AdminInitialBoardSize';
+const TYPE_REQ_WIN_ANIM = 'AdminRequestWinAnimation';
+const TYPE_ANIM_CARD_MOVE = 'AnimateMoveCard';
+const TYPE_ANIM_CARD_FLIP = 'AnimateFlipCard';
+const TYPE_ANIM_COLUMN = 'AnimateColumnDeletion';
+const TYPE_HIGH_SCORES = 'ServerHighScores';
 const WAITINGFOR_DRAW = 0;
 const WAITINGFOR_PLAY = 1;
 const WAITINGFOR_DISCARD = 2;
 const WAITINGFOR_UNCOVER = 3;
 const WAITINGFOR_NEXT = 4;
-const SOURCE_DRAW_PILE = 0;
-const SOURCE_DISCARD_PILE = 1;
+const PILE_DRAW = 0;
+const PILE_DISCARD = 1;
+const PILE_CURRENT = 2;
+const PILE_USER = 3;
 const DISCONNECT_REASON_SHUTDOWN = 0;
 const DISCONNECT_REASON_KICK = 1;
 const GAMESTATE_STOPPED = 0;
@@ -63,10 +71,12 @@ let outgoing_queue = undefined;
 let server_conversations = { };
 let notification_backlog = [ ];
 let notification_timeout = undefined;
+let initial_board_size = undefined;
 
 let user_uuid_obj = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
 let user_name = window.localStorage.getItem(STORAGE_USER_NAME);
 let first_time = false;
+
 
 if (user_name == null)
 {
@@ -91,6 +101,7 @@ let url_conn_string = current_url.searchParams.get("code");
 
 if (url_conn_string == null)
     url_conn_string = window.localStorage.getItem(STORAGE_CONN_STRING);
+
 
 
 on_page_loaded = () =>
@@ -122,6 +133,7 @@ function random(max)
 
 function generate_random_name()
 {
+    const adjective = ['ultra-', 'really ', 'extremely ', 'semi-', 'sometimes ', 'sporadically ', 'definitely ', 'pseudo-'];
     const prefix = ['red', 'green', 'blue', 'yellow', 'brown', 'white', 'pink', 'orange', 'turquoise', 'fast', 'large', 'slim',
         'indian', 'european', 'american', 'african', 'asian', 'australian', 'nordic', 'western', 'eastern', 'bright', 'happy',
         'dark', 'crimson', 'pale', 'medium', 'rare', 'angry', 'sliky', 'copper', 'iron', 'gold', 'steel', 'brass', 'wooden',
@@ -129,16 +141,25 @@ function generate_random_name()
         'flat', 'narrow', 'round', 'square', 'wide', 'straight', 'bendy', 'melodic', 'sweet', 'sour', 'salty', 'fuzzy', 'smooth',
         'young', 'old', 'wet', 'anxious', 'bored', 'annoyed', 'fierce', 'hungry', 'mysterious', 'calm', 'exited', 'kind', 'baby',
         'british', 'german', 'french', 'canadian', 'spanish', 'italian', 'chinese', 'japanese', 'swiss', 'polish', 'english',
-        'korean', 'amber', 'beige', 'azure', 'bronze', 'teal', 'tanned',
+        'korean', 'amber', 'beige', 'azure', 'bronze', 'teal', 'tanned', 'default', 'standard', 'somber', 'ballistic', 'crawling',
+        'flying', 'crouching', 'grumpy', 'optimisitc', 'pessimistic', 'monochrome'
     ];
     const suffix = ['fox', 'dog', 'cat', 'car', 'mouse', 'tiger', 'lion', 'eagle', 'pie', 'raptor', 'snake', 'turtle', 'salmon',
         'coral', 'smoke', 'tomato', 'pepper', 'salt', 'sugar', 'cake', 'tea', 'coffee', 'cucumber', 'apple', 'banana', 'peach',
         'orchid', 'tree', 'flower', 'stone', 'sea', 'forest', 'night', 'puma', 'falcon', 'horse', 'squirrel', 'yoda', 'olive',
         'rose', 'basilisc', 'dragon', 'bear', 'camel', 'bag', 'bee', 'tractor', 'coyote', 'crow', 'cricket', 'crocodile', 'gecko',
-        'kiwi', 'leopard', 'lemur', 'pelican', 'penguin', 'swan'
+        'kiwi', 'leopard', 'lemur', 'pelican', 'penguin', 'swan', 'cube', 'matter', 'square', 'magpie', 'eggplant', 'coconut',
+        'avocado', 'cranberry', 'pine', 'oak', 'gandalf', 'gollum', 'voldemort', 'lamp', 'light', 'roof', 'mushroom'
     ];
+    let p = '', s = '';
 
-    return `${prefix[random(prefix.length)]} ${suffix[random(suffix.length)]}`;
+    while (p == s)
+    {
+        p = prefix[random(prefix.length)];
+        s = suffix[random(suffix.length)];
+    }
+
+    return `${adjective[random(adjective.length)]}${p} ${s}`;
 }
 
 function decode_connection_string(conn_string)
@@ -176,6 +197,7 @@ function socket_close()
     socket = undefined;
     incoming_queue = undefined;
     outgoing_queue = undefined;
+    initial_board_size = undefined;
 
     clearInterval(input_loop);
     clearInterval(output_loop);
@@ -337,8 +359,18 @@ function process_server_message(type, data)
         show_notification(data.Message, true);
     else if (type == TYPE_LEADERBOARD)
         update_leaderboard(data.LeaderBoard);
+    else if (type == TYPE_HIGH_SCORES)
+        update_server_highscores(data.HighScores);
     else if (type == TYPE_PLAYER_WIN)
         show_celebration(data.UUID);
+    else if (type == TYPE_ANIM_CARD_MOVE)
+        animate_card_move(data);
+    else if (type == TYPE_ANIM_CARD_FLIP)
+        animate_card_flip(data);
+    else if (type == TYPE_ANIM_COLUMN)
+        animate_column_deletion(data);
+    else if (type == TYPE_BOARD_SIZE)
+        initial_board_size = { columns: data.Columns, rows: data.Rows };
     else
         console.log('unprocessed:', type, data);
 }
@@ -432,7 +464,181 @@ function update_notification_list()
 
 function update_leaderboard(leaderboard)
 {
-    // Todo : leaderboard tab, leading message (?), lead loosing message (?)
+    let html = '';
+
+    for (var i = 0; i < leaderboard.length; ++i)
+        html += `
+            <tr>
+                <td ${i < 3 ? `class="rank" data-rank="${i + 1}"` : ''}></td>
+                <td>${i + 1}</td>
+                <td>${leaderboard[i].Points}</td>
+                <td>${user_to_html(leaderboard[i].UUID)}</td>
+            </tr>
+        `;
+
+    $('#leaderboard-list').html(`
+        <table>
+            <tr>
+                <th></th>
+                <th>Rank</th>
+                <th>Points</th>
+                <th>Player</th>
+            </tr>
+            ${html}
+        </table>
+    `);
+}
+
+function update_server_highscores(highscores)
+{
+    let html = '';
+
+    for (var i = 0; i < highscores.length; ++i)
+        html += `
+            <tr>
+                <td ${i < 3 ? `class="rank" data-rank="${i + 1}"` : ''}></td>
+                <td>${i + 1}</td>
+                <td>${highscores[i].Points}</td>
+                <td>${user_cache[highscores[i].UUID] == undefined ? highscores[i].LastName : user_to_html(highscores[i].UUID)}</td>
+                <td>${highscores[i].Date}</td>
+            </tr>
+        `;
+
+    $('#highscore-list').html(`
+        <table>
+            <tr>
+                <th></th>
+                <th>Rank</th>
+                <th>Highscore</th>
+                <th>Player</th>
+                <th>Date</th>
+            </tr>
+            ${html}
+        </table>
+    `);
+}
+
+function get_pile_selector(pile, uuid)
+{
+    if (pile.Pile == PILE_DRAW)
+        return '#draw-pile';
+    else if (pile.Pile == PILE_DISCARD)
+        return '#discard-pile';
+    else
+    {
+        const selector = `.player[data-uuid="${uuid}"] .pile`;
+
+        if (pile.Pile == PILE_CURRENT)
+            return `${selector}[data-pile="current"]`;
+        else if (pile.Pile == PILE_USER)
+            return `${selector}[data-pile="user-${pile.OptionalRow}-${pile.OptionalColumn}"]`;
+    }
+}
+
+function animate_card_move(data)
+{
+    const from = get_pile_selector(data.From, data.UUID);
+    const to = get_pile_selector(data.To, data.UUID);
+    let from_scale = 1.0;
+    let to_scale = 1.0;
+
+    if (data.UUID != user_uuid)
+    {
+        const small = window.getComputedStyle(document.body).getPropertyValue('--player-scale');
+
+        from_scale = from.indexOf('.player') == -1 ? 1.0 : +small;
+        to_scale = to.indexOf('.player') == -1 ? 1.0 : +small;
+    }
+
+    const card_a = $(card_to_html(data.Card, 'animated'));
+    const card_b = $(card_to_html(data.Behind, 'animated'));
+    const anim_length = 750.0; // ms
+    const from_pile = $(from);
+    const to_pile = $(to);
+    const from_pos = from_pile[0].getBoundingClientRect();
+    const to_pos = to_pile[0].getBoundingClientRect();
+
+    if (pile.Pile == PILE_DRAW || pile.Pile == PILE_DISCARD)
+        $('#animation-pile').append(card_b);
+
+    $('#animation-pile').append(card_a);
+
+    from_pile.find('.card').hide();
+    to_pile.find('.card').hide();
+
+    card_a.css('left', from_pos.left + 'px');
+    card_a.css('top', from_pos.top + 'px');
+    card_b.css('left', from_pos.left + 'px');
+    card_b.css('top', from_pos.top + 'px');
+    card_a.animate({
+        left: to_pos.left + 'px',
+        top: to_pos.top + 'px'
+    },
+    {
+        duration: anim_length,
+        step: function(now, fx) {
+            now /= anim_length;
+
+            $(this).css('transform', `scale(${now * to_scale + (1 - now) * from_scale})`)
+                   .css('left', from_pos.left + 'px')
+                   .css('top', from_pos.top + 'px');
+        }
+    });
+
+    setTimeout(() =>
+    {
+        card_a.remove();
+        card_b.remove();
+        from_pile.find('.card').show();
+        to_pile.find('.card').show();
+    }, anim_length);
+}
+
+function animate_card_flip(data)
+{
+    const scale = data.UUID == user_uuid ? 1.0 : +window.getComputedStyle(document.body).getPropertyValue('--player-scale');
+    const orig = $(get_pile_selector({
+        Pile: PILE_USER,
+        OptionalRow: data.Row,
+        OptionalColumn: data.Column
+    }, data.UUID) + ' .card');
+    const position = orig[0].getBoundingClientRect();
+    const card = $(card_to_html(null, 'animated'));
+    const anim_length = 750.0; // ms
+
+    $('#animation-pile').append(card);
+
+    orig.hide();
+    card.css('left', position.left + 'px');
+    card.css('top', position.top + 'px');
+
+    $({ Counter: 0.0 }).animate({ Counter: anim_length },
+    {
+        duration: anim_length,
+        step: function(now, fx)
+        {
+            now /= anim_length;
+
+            if (now > .5)
+                now = 1 - now;
+
+            card.css('transform', `scale(${scale}) rotateY(${now * 180}deg)`)
+                .css('left', position.left + 'px')
+                .css('top', position.top + 'px');
+        }
+    });
+
+    setTimeout(() => card.attr('data-value', data.Card).html(`<span>${data.Card.Value}</span>`), anim_length / 2);
+    setTimeout(() =>
+    {
+        card.remove();
+        orig.show();
+    }, anim_length);
+}
+
+function animate_column_deletion(data)
+{
+    // TODO
 }
 
 function show_celebration(uuid)
@@ -535,9 +741,10 @@ function update_game_field(data)
     for (const player of data.Players)
     {
         const you = player.UUID == user_uuid;
+        const is_final = player.UUID == data.FinalRoundInitiator;
         let card_index = 0;
         let points = 0;
-        let row = '';
+        let card_grid = '';
 
         for (const card of player.Cards)
         {
@@ -546,12 +753,18 @@ function update_game_field(data)
             const pile = `user-${r}-${c}`;
 
             if (c == 0)
-                row += '<tr>';
+                card_grid += '<tr>';
 
-            row += `<td class="pile" data-row="${r}" data-col="${c}" data-pile="${pile}">${card_to_html(card, pile)}</td>`;
+            card_grid += `<td class="pile" data-row="${r}" data-col="${c}" data-pile="${pile}">${card_to_html(card, pile)}</td>`;
 
             if ((card_index + 1) % player.Columns == 0)
-                row += '</tr>';
+            {
+                if (initial_board_size != undefined)
+                    for (var i = c + 1; i < initial_board_size.columns; ++i)
+                        card_grid += `<td class="pile virtual" data-row="${r}" data-col="${i}"></td>`;
+
+                card_grid += '</tr>';
+            }
 
             if (card != null)
                 points += card.Value;
@@ -559,17 +772,31 @@ function update_game_field(data)
             ++card_index;
         }
 
+        if (initial_board_size != undefined)
+            for (var j = player.Rows; j < initial_board_size.rows; ++j)
+            {
+                card_grid += '<tr>';
+
+                for (var i = 0; i < initial_board_size.columns; ++i)
+                    card_grid += `<td class="pile virtual" data-row="${j}" data-col="${i}"></td>`;
+
+                card_grid += '</tr>';
+            }
+
+        if (is_final)
+            points *= 2;
+
         const user_html = user_to_html(player.UUID);
         const user_name = $(user_html).text().trim();
         const is_current = index == data.CurrentPlayer
         const html = `
-            <div class="player${is_current ? ' current' : ''}"
+            <div class="player ${is_current ? 'current' : ''} ${is_final ? 'final' : ''}"
                  data-uuid="${player.UUID}"
                  data-name="${user_name}">
                 ${player.LeaderBoardIndex == 0 && !you ? '<canvas id="confetti-other"></canvas>' : ''}
                 <div class="player-cards">
                     <table class="player-grid">
-                        ${row}
+                        ${card_grid}
                     </table>
                     <div class="player-side">
                         ${data.Players.length < 2 ? '<div class="player-rank" data-rank="-1">&nbsp;</div>' :
@@ -643,126 +870,134 @@ function update_game_field(data)
     else if (data.Players.length > 1)
         $('#admin-start-game').removeClass('hidden');
 
-    if (data.CurrentPlayer >= 0 && data.CurrentPlayer < data.Players.length && data.Players[data.CurrentPlayer].UUID == user_uuid)
-    {
-        let enable_dnd = true;
+    if (data.CurrentPlayer >= 0 && data.CurrentPlayer < data.Players.length)
+        if (data.Players[data.CurrentPlayer].UUID != user_uuid)
+        {
+            const next_uuid = data.Players[(data.CurrentPlayer + 1) % data.Players.length].UUID;
+            const next = next_uuid == user_uuid ? 'You' : user_to_html(next_uuid);
 
-        $('.card').removeClass(cls_dragallowed);
-        $('.pile').removeClass(cls_dropallowed);
-
-        if (data.WaitingFor == WAITINGFOR_DRAW)
-        {
-            $('.ego-side .card[data-pile="draw"],.ego-side .card[data-pile="discard"]').addClass(cls_dragallowed);
-            $('.ego-side .pile[data-pile="current"]').addClass(cls_dropallowed);
-            $('#instructions').html('Draw a card from either the discard or draw pile and drop it into your "currently drawn"-slot.');
-        }
-        else if (data.WaitingFor == WAITINGFOR_PLAY)
-        {
-            $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
-            $('.ego-side .pile[data-pile="discard"],.pile[data-pile*="user"]').addClass(cls_dropallowed);
-            $('#instructions').html(`You can either discard your currently drawn card or you can swap the drawn card with any of your own cards.
-                                     Both actions can be performed by simply dropping the currently drawn card onto the desired slot.`);
-        }
-        else if (data.WaitingFor == WAITINGFOR_DISCARD)
-        {
-            $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
-            $('.ego-side .pile[data-pile="discard"]').addClass(cls_dropallowed);
-            $('#instructions').html('Discard the swapped card by dropping it onto the discard pile.');
+            $('#instructions').html(`It is currently ${user_to_html(data.Players[data.CurrentPlayer].UUID)}'s turn to play. ${next} will be the next player to play.`);
         }
         else
-            enable_dnd = false;
-
-        if (data.WaitingFor == WAITINGFOR_UNCOVER)
         {
-            const cards = $('.ego-side .card[data-pile*="user"][data-value="null"]');
+            let enable_dnd = true;
 
-            cards.addClass(cls_clickable);
-            cards.click(function()
+            $('.card').removeClass(cls_dragallowed);
+            $('.pile').removeClass(cls_dropallowed);
+
+            if (data.WaitingFor == WAITINGFOR_DRAW)
             {
-                const pile = $(this).parent();
+                $('.ego-side .card[data-pile="draw"],.ego-side .card[data-pile="discard"]').addClass(cls_dragallowed);
+                $('.ego-side .pile[data-pile="current"]').addClass(cls_dropallowed);
+                $('#instructions').html('Draw a card from either the discard or draw pile and drop it into your "currently drawn"-slot.');
+            }
+            else if (data.WaitingFor == WAITINGFOR_PLAY)
+            {
+                $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
+                $('.ego-side .pile[data-pile="discard"],.pile[data-pile*="user"]').addClass(cls_dropallowed);
+                $('#instructions').html(`You can either discard your currently drawn card or you can swap the drawn card with any of your own cards.
+                                        Both actions can be performed by simply dropping the currently drawn card onto the desired slot.`);
+            }
+            else if (data.WaitingFor == WAITINGFOR_DISCARD)
+            {
+                $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
+                $('.ego-side .pile[data-pile="discard"]').addClass(cls_dropallowed);
+                $('#instructions').html('Discard the swapped card by dropping it onto the discard pile.');
+            }
+            else
+                enable_dnd = false;
 
-                server_send_query(
-                    TYPE_GAME_UNCOVER,
-                    { Row: +pile.attr('data-row'), Column: +pile.attr('data-col') },
-                    (_, d) => {
-                        if (d.Success)
-                            cards.removeClass(cls_clickable);
+            if (data.WaitingFor == WAITINGFOR_UNCOVER)
+            {
+                const cards = $('.ego-side .card[data-pile*="user"][data-value="null"]');
+
+                cards.addClass(cls_clickable);
+                cards.click(function()
+                {
+                    const pile = $(this).parent();
+
+                    server_send_query(
+                        TYPE_GAME_UNCOVER,
+                        { Row: +pile.attr('data-row'), Column: +pile.attr('data-col') },
+                        (_, d) => {
+                            if (d.Success)
+                                cards.removeClass(cls_clickable);
+                        }
+                    );
+                });
+
+                $('#instructions').html('You are expected to uncover one of your cards. Simply tap the card to turn it over.');
+            }
+
+            if (enable_dnd)
+            {
+                $(`.ego-side .card.${cls_dragallowed}`).draggable({
+                    start: (e, ui) =>
+                    {
+                        $(e.target).addClass(cls_dragging);
+                        $(`.pile.${cls_dropallowed}`).addClass(cls_dragging);
+                    },
+                    stop: (e, ui) =>
+                    {
+                        const card = $(e.target);
+                        const pile = $(`.pile.${cls_dropped}`);
+                        const valid = pile.hasClass(cls_dropallowed);
+                        const from = card.attr('data-pile');
+                        const to = pile.attr('data-pile');
+
+                        pile.removeClass(cls_dropped);
+                        card.removeClass(cls_dragging);
+                        $(`.pile.${cls_dragover}`).removeClass(cls_dragging);
+
+                        const revert = () => card.animate({
+                            left: '0px',
+                            top: '0px',
+                        });
+
+                        if (valid)
+                            if (to == 'current' && (from == 'draw' || from == 'discard'))
+                                return server_send_query(
+                                    TYPE_GAME_DRAW,
+                                    { Pile: from == 'draw' ? PILE_DRAW : PILE_DISCARD },
+                                    (_, d) => {
+                                        if (!d.Success)
+                                            revert();
+                                    }
+                                );
+                            else if (from == 'current' && to == 'discard')
+                                return server_send_query(TYPE_GAME_DISCARD, { }, (_, d) => {
+                                    if (!d.Success)
+                                        revert();
+                                });
+                            else if (from == 'current' && to.startsWith('user'))
+                                return server_send_query(
+                                    TYPE_GAME_SWAP,
+                                    {
+                                        Row: +pile.attr('data-row'),
+                                        Column: +pile.attr('data-col')
+                                    },
+                                    (_, d) => {
+                                        if (!d.Success)
+                                            revert();
+                                    }
+                                );
+
+                        revert();
                     }
-                );
-            });
-
-            $('#instructions').html('You are expected to uncover one of your cards. Simply tap the card to turn it over.');
+                });
+                $('.ego-side .pile').droppable({
+                    drop: function(e, ui)
+                    {
+                        $(`.pile`).removeClass(cls_dragover);
+                        $(e.target).addClass(cls_dropped);
+                    },
+                    accept: function(e) { return $(this).hasClass(cls_dropallowed); },
+                    over: function(e, _) { $(e.target).addClass(cls_dragover); },
+                    out: function(e, _) { $(e.target).removeClass(cls_dragover); }
+                });
+                $('*:not(.pile)').droppable({ accept: () => false });
+            }
         }
-
-        if (enable_dnd)
-        {
-            $(`.ego-side .card.${cls_dragallowed}`).draggable({
-                start: (e, ui) =>
-                {
-                    $(e.target).addClass(cls_dragging);
-                    $(`.pile.${cls_dropallowed}`).addClass(cls_dragging);
-                },
-                stop: (e, ui) =>
-                {
-                    const card = $(e.target);
-                    const pile = $(`.pile.${cls_dropped}`);
-                    const valid = pile.hasClass(cls_dropallowed);
-                    const from = card.attr('data-pile');
-                    const to = pile.attr('data-pile');
-
-                    pile.removeClass(cls_dropped);
-                    card.removeClass(cls_dragging);
-                    $(`.pile.${cls_dragover}`).removeClass(cls_dragging);
-
-                    const revert = () => card.animate({
-                        left: '0px',
-                        top: '0px',
-                    });
-
-                    if (valid)
-                        if (to == 'current' && (from == 'draw' || from == 'discard'))
-                            return server_send_query(
-                                TYPE_GAME_DRAW,
-                                { Pile: from == 'draw' ? SOURCE_DRAW_PILE : SOURCE_DISCARD_PILE },
-                                (_, d) => {
-                                    if (!d.Success)
-                                        revert();
-                                }
-                            );
-                        else if (from == 'current' && to == 'discard')
-                            return server_send_query(TYPE_GAME_DISCARD, { }, (_, d) => {
-                                if (!d.Success)
-                                    revert();
-                            });
-                        else if (from == 'current' && to.startsWith('user'))
-                            return server_send_query(
-                                TYPE_GAME_SWAP,
-                                {
-                                    Row: +pile.attr('data-row'),
-                                    Column: +pile.attr('data-col')
-                                },
-                                (_, d) => {
-                                    if (!d.Success)
-                                        revert();
-                                }
-                            );
-
-                    revert();
-                }
-            });
-            $('.ego-side .pile').droppable({
-                drop: function(e, ui)
-                {
-                    $(`.pile`).removeClass(cls_dragover);
-                    $(e.target).addClass(cls_dropped);
-                },
-                accept: function(e) { return $(this).hasClass(cls_dropallowed); },
-                over: function(e, _) { $(e.target).addClass(cls_dragover); },
-                out: function(e, _) { $(e.target).removeClass(cls_dragover); }
-            });
-            $('*:not(.pile)').droppable({ accept: () => false });
-        }
-    }
 }
 
 function on_login_input_changed()
@@ -818,10 +1053,13 @@ function update_server_and_player_info()
     sorted.sort((a, b) => a.admin == b.admin ? 0 : a.admin ? -1 : 1);
 
     const admin_view = $('#main-container').hasClass('admin');
+    let remaining = sorted.length;
 
     for (const user of sorted)
+    {
+        --remaining;
         html += `
-        <tr ${admin_view ? '' : 'class="separator"'}>
+        <tr ${remaining && !admin_view ? 'class="separator"' : ''}>
             <td class="level ${user.admin ? 'admin' : ''}"></td>
             <td>
                 ${user.name}
@@ -839,9 +1077,15 @@ function update_server_and_player_info()
                 </button>
             </td>
         </tr>
-        <tr ${admin_view ? 'class="separator"' : ''}>
-            <td class="separator" colspan="2">{${user.uuid}}</td>
-            <td></td>
+        <tr ${remaining && admin_view ? 'class="separator"' : ''}>
+            <td colspan="2">{${user.uuid}}</td>
+            <td class="admin-only">
+                <button class="admin-confetti" data-uuid="${user.uuid}">
+                    <span class="emoji">✨</span>
+                    Confetti
+                    <span class="emoji">✨</span>
+                </button>
+            </td>
             <td class="admin-only">
                 <button class="admin-make-${user.admin ? 'regular' : 'admin'}" data-uuid="${user.uuid}">
                     Make ${user.admin ? 'regular' : 'admin'} user
@@ -850,6 +1094,7 @@ function update_server_and_player_info()
         ` : ''}
         </tr>
         `;
+    }
 
     html += '</html>';
 
@@ -862,6 +1107,7 @@ function update_server_and_player_info()
     reg_handler('.admin-kick-from-game[data-uuid]', TYPE_REMOVE_GAME_PLAYER);
     reg_handler('.admin-make-regular[data-uuid]', TYPE_MAKE_REGULAR);
     reg_handler('.admin-make-admin[data-uuid]', TYPE_MAKE_ADMIN);
+    reg_handler('.admin-confetti[data-uuid]', TYPE_REQ_WIN_ANIM);
 }
 
 function upate_user_info(uuid)
@@ -878,7 +1124,6 @@ function upate_user_info(uuid)
                 else if (user_cache[uuid].admin && !response.IsAdmin)
                     show_notification('You have been removed as an administrator.', false);
 
-
             user_cache[uuid] = {
                 name: response.Name,
                 admin: response.IsAdmin,
@@ -890,6 +1135,9 @@ function upate_user_info(uuid)
                     $('#main-container').addClass('admin');
                 else
                     $('#main-container').removeClass('admin');
+
+            if (!$('#user-name').is(':focus'))
+                $('#user-name').val(response.Name);
         }
 
         update_server_and_player_info();
@@ -905,7 +1153,8 @@ function change_username_req(name, callback)
 
 $('#login-string').on('input change paste keyup', on_login_input_changed);
 
-$('#login-string').keypress(function(e) {
+$('#login-string').keypress(e =>
+{
     if (e.keyCode == 13)
         $('#login-start').click();
 });
@@ -975,7 +1224,8 @@ $('#login-failed-dismiss').click(() => $('#login-form').removeClass('failed'));
 
 $('#notification-close').click(hide_notification);
 
-$('#username-input').keypress(function(e) {
+$('#username-input').keypress(e =>
+{
     if (e.keyCode == 13)
         $('#username-apply').click();
 });
@@ -995,10 +1245,30 @@ $('#username-apply').click(() =>
             $('body').addClass('ready');
             $('#game-container').removeClass('hidden');
             $('#username-container').addClass('hidden');
+            $('#user-name').val(user_name);
         }
         else
             $('#username-error').html(response.Message);
     });
+});
+
+$('#user-name').keypress(e =>
+{
+    $('#user-name').html('');
+
+    if (e.keyCode == 13)
+        change_username_req($('#user-name').val(), response =>
+        {
+            if (response.Success)
+            {
+                user_name = $('#user-name').val();
+                window.localStorage.setItem(STORAGE_USER_NAME, user_name);
+
+                $('#username-input').val(user_name);
+            }
+            else
+                $('#user-error').html(response.Message);
+        });
 });
 
 $('#instruction-selector .tab-selector .tab[data-tab]').click(function()
