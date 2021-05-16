@@ -203,7 +203,7 @@
                         <h1>SKHEIJO</h1>
                     </div>
                     <p>
-                        SKHEIJO is a digital adaptation of the German board game <a href="https://www.magilano.com/produkt/skyjo" target="_blank">SKYJO</a>.
+                        SKHEIJO is a digital adaptation of the German board game <a href="https://www.magilano.com/produkt/skyjo" target="_blank">SKYJO</a> made by Magilano.
                         Our mascot is a hamster called HEIKKI, hence the name adaptation SK<b>HEI</b>JO.
                         <br/>
                         &nbsp;
@@ -292,18 +292,11 @@
                                 <div class="piles">
                                     <div id="draw-pile" class="pile" data-annotation="draw pile" data-pile="draw"></div>
                                     <div id="discard-pile" class="pile" data-annotation="discard pile" data-pile="discard"></div>
+                                    <div id="animation-pile" class="pile" data-pile="animation"></div>
                                 </div>
                                 <div id="instructions"></div>
                             </div>
                         </div>
-                    </div>
-                    <div class="menu-content hidden" data-tab="leaderboard">
-                        <h1>Game league table</h1>
-                        <p>
-                            The following list enumerates all players participating in the current game ordered by their current points.
-                            Please note that the best SKHEIJO players aim for the lowest point score.
-                        </p>
-                        <div id="leaderboard-list"></div>
                     </div>
                     <div class="menu-content hidden" data-tab="players">
                         <h1>Player overview <span class="admin-only">and user management</span></h1>
@@ -317,6 +310,21 @@
                             <span id="player-count">0</span> player(s) connected:
                         </p>
                         <div id="player-list"></div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="leaderboard">
+                        <h1>Game League Table</h1>
+                        <p>
+                            The following list enumerates all players participating in the current game ordered by their current points.
+                            Please note that the best SKHEIJO players aim for the lowest point score.
+                        </p>
+                        <div id="leaderboard-list"></div>
+                        <br/>
+                        <h1>All-time Server Highscores</h1>
+                        <p>
+                            The following list enumerates all highscores achieved by players on this server.
+                            Please note that the best SKHEIJO players aim for the lowest point score.
+                        </p>
+                        <div id="highscore-list"></div>
                     </div>
                     <div class="menu-content hidden" data-tab="notifications">
                         <h1>Notification Overview</h1>
@@ -375,12 +383,17 @@
                     <div class="menu-content hidden" data-tab="help">
                         <h1>Help / About</h1>
                         <p>
-                            TODO: game rules<br/>
-                            TODO: usage help/documentation
+                            TODO
                         </p>
+                        <h2>Game Rules and Usage</h2>
+                        <p>
+                            The goal of SKHEIJO is to score as few points as possible.
+
+                        </p>
+                        TODO
                     </div>
                     <div class="menu-content hidden" data-tab="settings">
-                        <h1>Settings</h1>
+                        <h1>User Settings</h1>
                         <p>
                             The following text field contains your player UUID.
                             UUID stands for 'Universally Unique Identifier' and uniquely identifies you on the game server.
@@ -388,25 +401,39 @@
                             You can reset your UUID in the logout-menu (<img src="img/menu-logout.svg" style="height: .8em;"/>).
                         </p>
                         <input id="user-uuid" type="text" readonly placeholder="{00000000-0000-0000-0000-000000000000}"/>
-                        <br/>
-                        <br/>
                         <p>
-                            TODO: change name <br/>
-                            TODO: auto login <br/>
+                            You can change your user name / alias in the text box below.
+                            Confirm your change by typing <kbd>ENTER</kbd>.
                         </p>
-                        <p class="admin-only">
+                        <p>
+                            <input id="user-name" type="text" placeholder="Username with a length of 2..32 characters" maxlength="32"/>
+                        </p>
+                        <span id="user-error"></span>
+                        <br/>
+                        <h1>Other Settings</h1>
+                        <p>
+                            TODO: auto login<br/>
+                        </p>
+                        <div class="admin-only">
+                            <h1>Game Settings</h1>
+                            <p>
+                                TODO : set initial board size
+
+                                <input id="init-board-cols" type="number" min="2" max="10" value="4" placeholder="4"/> x
+                                <input id="init-board-rows" type="number" min="2" max="5" value="3" placeholder="3"/>
+                            </p>
                             <hr/>
-                            <h2>
-                                Shut down the Server
-                            </h2>
+                            <h1>Shut down the Server</h1>
                             <button id="shut-down-server">
                                 I KNOW WHAT I'M DOING.
                                 <br/>
                                 I KNOW THAT I'LL HAVE TO RESTART THE SERVER MANUALLY.
                                 <br/>
+                                I HAVE PHYSICALL ACCESS TO THE MACHINE ON WHICH THE SERVER IS RUNNING.
+                                <br/>
                                 I KNOW HOW TO RESTART THE SERVER AND/OR HOW TO USE THE COMMAND LINE.
                             </button>
-                        </p>
+                        </div>
                     </div>
                 </div>
             </div>
