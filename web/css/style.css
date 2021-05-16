@@ -145,6 +145,11 @@ li {
     margin: 3px;
 }
 
+.emoji {
+    font-size: .8em;
+}
+
+
 
 
 html {
@@ -493,15 +498,17 @@ body.ready #background-container {
     padding: 20px;
 }
 
+#user-uuid,
+#user-name,
 #share-url,
 #login-string,
+#logout-button,
 #username-input,
 #login-failed-dismiss,
 #close-unblock-container,
 #usage-warning-dismiss,
-#logout-button,
 #reset-logout-button,
-#user-uuid {
+#shut-down-server {
     width: 100%;
 }
 
@@ -617,8 +624,8 @@ body.ready #background-container {
 }
 
 .menu-spacer {
+    /* min-height: var(--menu-size); */
     width: var(--menu-size);
-    min-height: 50px;
     height: 100%;
 }
 
@@ -771,12 +778,14 @@ span.player-name[data-is-me]::after {
 }
 
 #player-list,
+#highscore-list,
 #leaderboard-list,
 #notification-list {
     max-height: 100%;
 }
 
 #player-list table,
+#highscore-list table,
 #leaderboard-list table,
 #notification-list table {
     border-collapse: collapse;
@@ -785,6 +794,9 @@ span.player-name[data-is-me]::after {
 #player-list table,
 #player-list tbody,
 #player-list tr,
+#highscore-list table,
+#highscore-list tbody,
+#highscore-list tr,
 #leaderboard-list table,
 #leaderboard-list tbody,
 #leaderboard-list tr,
@@ -804,6 +816,8 @@ span.player-name[data-is-me]::after {
 
 #player-list tr,
 #player-list td,
+#highscore-list tr,
+#highscore-list td,
 #leaderboard-list tr,
 #leaderboard-list td,
 #notification-list tr,
@@ -813,13 +827,18 @@ span.player-name[data-is-me]::after {
 
 #player-list tr td.separator,
 #player-list tr.separator td,
+#highscore-list tr th,
+#leaderboard-list tr th,
+#highscore-list tr:not(:last-child) td,
 #leaderboard-list tr:not(:last-child) td,
 #notification-list tr:not(:last-child) td {
     border-bottom: 1px solid var(--color-fg);
 }
 
 #player-list td.level,
-#notification-list td.status {
+#notification-list td.status,
+#highscore-list td.rank,
+#leaderboard-list td.rank {
     width: 30px;
 }
 
@@ -830,7 +849,7 @@ span.player-name[data-is-me]::after {
     background-size: 20px 20px;
 }
 
-#player-list td span {
+#player-list td span:not(.emoji) {
     background-color: var(--color-bg-badge);
     border: 1px solid var(--color-fg);
     background-position: center;
@@ -859,6 +878,13 @@ span.player-name[data-is-me]::after {
     padding-right: 10px;
     text-align: right;
     min-width: 140px;
+}
+
+#leaderboard-list td.rank[data-rank] {
+    background-image: url('../img/stars.png');
+    background-position-x: -100%;
+    background-repeat: no-repeat;
+    background-size: cover;
 }
 
 #logout-button,
@@ -1041,8 +1067,8 @@ span.player-name[data-is-me]::after {
     align-items: center;
     margin-bottom: 6px;
     display: flex;
-    height: var(--player-height);
-    width: var(--player-width);
+    min-height: var(--player-height);
+    min-width: var(--player-width);
 }
 
 .player .player-cards,
@@ -1103,17 +1129,23 @@ span.player-name[data-is-me]::after {
     display: block;
 }
 
-.player-rank[data-rank="1"] {
+.player-rank[data-rank="1"],
+#highscore-list td.rank[data-rank="1"],
+#leaderboard-list td.rank[data-rank="1"] {
     background-position-x: 100%;
     color: #dc9630;
 }
 
-.player-rank[data-rank="2"] {
+.player-rank[data-rank="2"],
+#highscore-list td.rank[data-rank="2"],
+#leaderboard-list td.rank[data-rank="2"] {
     background-position-x: 50%;
     color: dimgray;
 }
 
-.player-rank[data-rank="3"] {
+.player-rank[data-rank="3"],
+#highscore-list td.rank[data-rank="3"],
+#leaderboard-list td.rank[data-rank="3"] {
     background-position-x: 0%;
     color: chocolate;
 }
@@ -1159,9 +1191,14 @@ span.player-name[data-is-me]::after {
     );
     background-size: 20px 20px;
 
-    height: calc(var(--card-height) + 4px);
-    width: calc(var(--card-width) + 4px);
+    height: calc(var(--card-height) + 6px);
+    width: calc(var(--card-width) + 6px);
     padding: 2px;
+}
+
+.pile.virtual {
+    border: 1px dashed #222;
+    opacity: .4;
 }
 
 .pile[data-annotation]::after {
@@ -1186,13 +1223,13 @@ span.player-name[data-is-me]::after {
     background-size: cover;
     border: 1px solid var(--color-fg);
     border-radius: var(--card-border);
-    max-height: var(--card-height);
-    max-width: var(--card-width);
+    height: var(--card-height);
+    width: var(--card-width);
     justify-content: center;
     align-items: center;
     display: flex;
-    height: 100%;
-    width: 100%;
+    /* height: 100%; */
+    /* width: 100%; */
 }
 
 .card[data-value]:not([data-value="null"]) {
@@ -1296,6 +1333,44 @@ span.player-name[data-is-me]::after {
     --color-control-bg: green;
     --color-bg-hover: forestgreen;
 }
+
+#animation-pile {
+    position: fixed;
+    left: 100%
+}
+
+#animation-pile .card {
+    --animation-scale: 1.0;
+
+    transform: scale(var(--animation-scale));
+    position: fixed;
+}
+
+
+
+
+
+
+
+
+
+#user-uuid,
+#user-name {
+    text-align: center;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
