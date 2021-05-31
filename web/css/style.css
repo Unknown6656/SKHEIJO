@@ -1167,7 +1167,7 @@ span.player-name[data-is-me]::after {
     position: relative;
     flex-flow: row;
     display: flex;
-    padding: 0px 10px 0px 0px;
+    padding: 0px 10px 25px 0px;
     width: 150px;
 }
 
