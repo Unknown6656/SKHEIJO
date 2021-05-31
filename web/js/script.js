@@ -371,7 +371,15 @@ function process_server_message(type, data)
     else if (type == TYPE_ANIM_COLUMN)
         animate_column_deletion(data);
     else if (type == TYPE_BOARD_SIZE)
+    {
         initial_board_size = { columns: data.Columns, rows: data.Rows };
+
+        if ($('.menu-bar .menu-item[data-tab].active').attr('data-tab') != 'settings')
+        {
+            $('init-board-cols').val(initial_board_size.columns);
+            $('init-board-rows').val(initial_board_size.rows);
+        }
+    }
     else if (type == TYPE_FINAL_ROUND)
         show_notification(`Final game round!<br/>${user_to_html(data.UUID)}'s score has been doubled.`);
     else
@@ -765,7 +773,7 @@ function update_game_field(data)
                     .removeClass(cls_dropallowed)
                     .removeClass(cls_dragallowed)
                     .removeClass(cls_clickable);
-    $('#game-player-count, #draw-pile, #discard-pile, #game-state-text, #players, #ego-player, #instructions').html('');
+    $('#game-player-count, #draw-pile, #discard-pile, #game-state-text, #players, #ego-player, #instructions, #final-round-warning').html('');
     $('#game-leave, #game-join, #admin-start-game, #admin-stop-game, #admin-reset-game').addClass('hidden');
 
     if (data == null || data == undefined)
@@ -782,6 +790,7 @@ function update_game_field(data)
         let card_index = 0;
         let points = 0;
         let card_grid = '';
+        let null_cards = 0;
 
         for (const card of player.Cards)
         {
@@ -803,7 +812,9 @@ function update_game_field(data)
                 card_grid += '</tr>';
             }
 
-            if (card != null)
+            if (card == null)
+                ++null_cards;
+            else
                 points += card.Value;
 
             ++card_index;
@@ -867,6 +878,13 @@ function update_game_field(data)
             joined = true;
 
             $('#ego-player').html(html);
+
+            if (data.State == GAMESTATE_RUNNING && null_cards < 2)
+                $('#final-round-warning').html(`
+                    <b>NOTE:</b>
+                    If your current move initiates the final round (i.e. you are the first to have uncovered all cards),
+                    your current points will be doubled from ${points} to ${points * 2}.
+                `);
         }
         else
             divs.push(`<div class="other-player">${html}</div>`);
@@ -917,7 +935,7 @@ function update_game_field(data)
         }
         else
         {
-            let enable_dnd = true;
+            let enable_drag_and_drop = true;
 
             $('.card').removeClass(cls_dragallowed);
             $('.pile').removeClass(cls_dropallowed);
@@ -932,8 +950,11 @@ function update_game_field(data)
             {
                 $('.ego-side .card[data-pile="current"]').addClass(cls_dragallowed);
                 $('.ego-side .pile[data-pile="discard"],.pile[data-pile*="user"]').addClass(cls_dropallowed);
-                $('#instructions').html(`You can either discard your currently drawn card or you can swap the drawn card with any of your own cards.
-                                        Both actions can be performed by simply dropping the currently drawn card onto the desired slot.`);
+                $('#instructions').html(`
+                    You can either discard your currently drawn card or you can swap the drawn card with any of your own cards.
+                    Both actions can be performed by simply dropping the currently drawn card onto the desired slot.
+                    Note that you must uncover one of your own cards should you decide to discard the currently drawn card.
+                `);
             }
             else if (data.WaitingFor == WAITINGFOR_DISCARD)
             {
@@ -942,7 +963,7 @@ function update_game_field(data)
                 $('#instructions').html('Discard the swapped card by dropping it onto the discard pile.');
             }
             else
-                enable_dnd = false;
+                enable_drag_and_drop = false;
 
             if (data.WaitingFor == WAITINGFOR_UNCOVER)
             {
@@ -963,10 +984,10 @@ function update_game_field(data)
                     );
                 });
 
-                $('#instructions').html('You are expected to uncover one of your cards. Simply tap the card to turn it over.');
+                $('#instructions').html(`You are expected to uncover one of your cards. Simply tap the card to turn it over.`);
             }
 
-            if (enable_dnd)
+            if (enable_drag_and_drop)
             {
                 $(`.ego-side .card.${cls_dragallowed}`).draggable({
                     start: (e, ui) =>
@@ -1373,6 +1394,13 @@ $('#admin-reset-game').click(() => server_send_command(TYPE_GAME_RESET, { }));
 
 $('#shut-down-server').click(() => server_send_command(TYPE_SERVER_STOP, { }));
 
+$('#change-init-board-size').click(() => server_send_query(TYPE_BOARD_SIZE, {
+    Columns: +$('#init-board-cols').val(),
+    Rows: +$('#init-board-rows').val()
+}, (_, data) => {
+    if (!data.Success)
+        show_notification(data.Message, false);
+}));
 
 
 const share_handler = (selector, callback) => $(`#share-container .share[data-service="${selector}"]`).click(() =>
