@@ -73,7 +73,15 @@ namespace SKHEIJO
 
         public override bool Equals(object? obj) => obj is ConnectionString cs && cs.ToString() == ToString();
 
-        public override string ToString() => From.String($"{Address}${Ports.CSharp}${Ports.WS}${Ports.WSS}${(IsIPv6 ? 1 : 0)}").ToBase64();
+        public override string ToString()
+        {
+            string addr = Address;
+
+            if (IPAddress.TryParse(addr, out IPAddress? ip) && ip?.AddressFamily is AddressFamily.InterNetworkV6)
+                addr = $"[{addr}]";
+
+            return From.String($"{addr}${Ports.CSharp}${Ports.WS}${Ports.WSS}${(IsIPv6 ? 1 : 0)}").ToBase64();
+        }
 
         public static ConnectionString FromString(string connection_string)
         {
@@ -306,6 +314,9 @@ namespace SKHEIJO
 
             foreach (ServerConfig.HighScore hs in config.high_scores?.OrderByDescending(hs => hs.Points) as IEnumerable<ServerConfig.HighScore> ?? Array.Empty<ServerConfig.HighScore>())
                 HighScores.Push(hs);
+
+            if (config.init_board_size is ( > 1, > 1))
+                PlayerState.InitialDimensions = config.init_board_size;
         }
 
         public void Start()
@@ -364,7 +375,12 @@ namespace SKHEIJO
                 _players.Clear();
                 _stopping = 0;
 
-                "Server stopped. Press [ENTER] to terminate.".Info(LogSource.Server);
+                await Task.Factory.StartNew(async () =>
+                {
+                    await Task.Delay(500);
+
+                    "\n\n---------------------------\nServer stopped.\nPress [ENTER] to terminate.".Warn(LogSource.Server);
+                });
             }
         }
 
@@ -376,6 +392,7 @@ namespace SKHEIJO
                 admin_uuids = AdminUUIDs?.ToArray() ?? _initial_config.admin_uuids,
                 banned_names = BannedNames.ToArray(),
                 high_scores = HighScores.ToArray(),
+                init_board_size = PlayerState.InitialDimensions,
             }).ToFile(ConfigurationPath);
 
             $"Saving server config to '{ConfigurationPath}'.".Log(LogSource.Server);
@@ -576,6 +593,38 @@ namespace SKHEIJO
             socket.Close();
         }
 
+        private void OnWebsocketMessage(WebSocketConnection _, Player player, Union<byte[], string> message)
+        {
+            if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
+                _incoming.Enqueue((player, new(guid, message)));
+            else
+                $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
+        }
+
+        public void Notify(Player player, params CommunicationData[] data)
+        {
+            foreach (CommunicationData d in data)
+            {
+                $"Sending {d} to '{player}'...".Log(LogSource.Server);
+
+                _outgoing.Enqueue((player, RawCommunicationPacket.SerializeData(Guid.Empty, d)));
+            }
+        }
+
+        public void Notify(IEnumerable<Player> players, params CommunicationData[] data) => players.Do(p => Notify(p, data));
+
+        public void NotifyAll(params CommunicationData[] data) => Notify(_players.Keys, data);
+
+        public void NotifyAllExcept(Player player, params CommunicationData[] data) => NotifyAllExcept(new[] { player }, data);
+
+        public void NotifyAllExcept(IEnumerable<Player> players, params CommunicationData[] data) => Notify(_players.Keys.Except(players), data);
+
+        public void NotifyGamePlayers(params CommunicationData[] data)
+        {
+            if (CurrentGame is Game game)
+                Notify(game.Players.Select(p => p.Player), data);
+        }
+
         private async Task ProcessOutgoingMessages()
         {
             while (_running != 0)
@@ -643,40 +692,6 @@ namespace SKHEIJO
                     await Task.Delay(1);
             }
         }
-
-        private void OnWebsocketMessage(WebSocketConnection _, Player player, Union<byte[], string> message)
-        {
-            if (RawCommunicationPacket.DeserializeData(message)?.guid is Guid guid)
-                _incoming.Enqueue((player, new(guid, message)));
-            else
-                $"Unable fetch conversation GUID from '{player}':\nJSON = {message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)}".Err(LogSource.WebServer);
-        }
-
-        public void Notify(Player player, params CommunicationData[] data)
-        {
-            foreach (CommunicationData d in data)
-            {
-                $"Sending {d} to '{player}'...".Log(LogSource.Server);
-
-                _outgoing.Enqueue((player, RawCommunicationPacket.SerializeData(Guid.Empty, d)));
-            }
-        }
-
-        public void Notify(IEnumerable<Player> players, params CommunicationData[] data) => players.Do(p => Notify(p, data));
-
-        public void NotifyAll(params CommunicationData[] data) => Notify(_players.Keys, data);
-
-        public void NotifyAllExcept(Player player, params CommunicationData[] data) => NotifyAllExcept(new[] { player }, data);
-
-        public void NotifyAllExcept(IEnumerable<Player> players, params CommunicationData[] data) => Notify(_players.Keys.Except(players), data);
-
-        public void NotifyGamePlayers(params CommunicationData[] data)
-        {
-            if (CurrentGame is Game game)
-                Notify(game.Players.Select(p => p.Player), data);
-        }
-
-        #endregion
 
         private async Task<CommunicationData?> ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
         {
@@ -823,6 +838,18 @@ namespace SKHEIJO
 
                                     NotifyAll(admin_request);
 
+                                    if (CurrentGame is { Players: { } players, CurrentGameState: GameState.Stopped })
+                                    {
+                                        Player[] ps = players.ToArray(p => p.Player);
+
+                                        ResetNewGame();
+
+                                        foreach (Player p in ps)
+                                            TryAddPlayerToGame(p);
+                                    }
+
+                                    SaveServer();
+
                                     return CommunicationData_SuccessError.OK;
                                 }
                                 else
@@ -843,6 +870,7 @@ namespace SKHEIJO
             }
         }
 
+        #endregion
         #region ACTUAL GAME LOGIC
 
         public void ResetNewGame()
@@ -899,7 +927,7 @@ namespace SKHEIJO
 
                     foreach ((Player player, int points) in leaderboard.Reverse())
                         if (!HighScores.TryPeek(out ServerConfig.HighScore? highest) || highest.Points > points)
-                            HighScores.Push(new(player.UUID, this[player]?.Name, DateTime.Now, points));
+                            HighScores.Push(new(player.UUID, this[player]?.Name, DateTime.Now, points, game.InitialRows, game.InitialColumns, game.Players.Count));
 
                     if (HighScores.Count != highscore_count)
                     {
@@ -973,7 +1001,7 @@ namespace SKHEIJO
         {
             ServerConfig? config = From.File(config_path).ToJSON<ServerConfig>();
 
-            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null);
+            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null, PlayerState.InitialDimensions);
 
             return new(config_path, config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
                                                         : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
@@ -991,10 +1019,18 @@ namespace SKHEIJO
         string server_name,
         string[] banned_names,
         Guid[]? admin_uuids,
-        ServerConfig.HighScore[]? high_scores
+        ServerConfig.HighScore[]? high_scores,
+        ServerConfig.BoardSize init_board_size
     )
     {
-        public sealed record HighScore(Guid UUID, string? LastName, DateTime Date, int Points);
+        public sealed record HighScore(Guid UUID, string? LastName, DateTime Date, int Points, int Rows, int Columns, int Players);
+
+        public sealed record BoardSize(int rows, int columns)
+        {
+            public static implicit operator (int rows, int cols)(BoardSize size) => (size.rows, size.columns);
+
+            public static implicit operator BoardSize((int rows, int cols) size) => new(size.rows, size.cols);
+        }
     }
 
     [Obsolete]
