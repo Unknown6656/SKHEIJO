@@ -19,6 +19,10 @@
     "certificate_path": "skheijo.pfx",
     "pfx_password": "skheijo",
     "server_name": "SKHEIJO Server",
+    "init_board_size": {
+        "rows": 3,
+        "columns": 4
+    },
     "banned_names": [
         "admin",
         "server"
@@ -30,28 +34,49 @@
     ],
     "high_scores": [
         {
+            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
+            "LastName": "ultra-wide sugar",
+            "Date": "2021-05-31T20:55:36.6569713+02:00",
+            "Points": -6,
+            "Rows": 3,
+            "Columns": 5,
+            "Players": 2
+        },
+        {
             "UUID": "76c28e2e-eef3-43ae-8b39-69d40b289c6a",
             "LastName": "copper eagle",
             "Date": "2021-05-31T17:42:29.0624201+02:00",
-            "Points": -4
+            "Points": -4,
+            "Rows": 3,
+            "Columns": 4,
+            "Players": 3
         },
         {
             "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
             "LastName": "ultra-wide sugar",
             "Date": "2021-05-30T22:42:29.0624201+02:00",
-            "Points": 1
+            "Points": 1,
+            "Rows": 3,
+            "Columns": 4,
+            "Players": 2
         },
         {
             "UUID": "3d482acb-345d-418a-bb94-6e5852f538aa",
             "LastName": "fierce eagle",
-            "Date": "2021-05-30T22:29:53.0000000+02:00",
-            "Points": 2
+            "Date": "2021-05-30T22:29:53+02:00",
+            "Points": 2,
+            "Rows": 3,
+            "Columns": 4,
+            "Players": 2
         },
         {
             "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
             "LastName": "ultra-wide sugar",
             "Date": "2021-05-16T13:20:04.1691897+02:00",
-            "Points": 3
+            "Points": 3,
+            "Rows": 3,
+            "Columns": 4,
+            "Players": 2
         }
     ]
 }
