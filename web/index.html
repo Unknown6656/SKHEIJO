@@ -297,6 +297,7 @@
                                 <div id="instructions"></div>
                             </div>
                         </div>
+                        <span id="final-round-warning"></span>
                     </div>
                     <div class="menu-content hidden" data-tab="players">
                         <h1>Player overview <span class="admin-only">and user management</span></h1>
@@ -417,10 +418,17 @@
                         <div class="admin-only">
                             <h1>Game Settings</h1>
                             <p>
-                                TODO : set initial board size
-
-                                <input id="init-board-cols" type="number" min="2" max="10" value="4" placeholder="4"/> x
-                                <input id="init-board-rows" type="number" min="2" max="5" value="3" placeholder="3"/>
+                                You can change the number of initial rows and columns of cards for each player using the following two input fields:
+                            </p>
+                            <p>
+                                <input id="init-board-cols" type="number" min="2" max="10" value="4" placeholder="4"/>Rows x
+                                <input id="init-board-rows" type="number" min="2" max="5" value="3" placeholder="3"/>Columns
+                            </p>
+                            <p>
+                                <button id="change-init-board-size">Change the number of initial rows and columns</button>
+                                <b>
+                                    Warning: Changing the size will halt the current game and reset it.
+                                </b>
                             </p>
                             <hr/>
                             <h1>Shut down the Server</h1>
