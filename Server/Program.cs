@@ -28,15 +28,14 @@ namespace Server
             Logger.MinimumSeverityLevel[LogSource.WebServer] = LogSeverity.Info;
             Logger.Start();
 
-            string settings_path = $"{ASM_DIR.FullName}/server-config.json";
-            ServerConfig? config = From.File(settings_path).ToJSON<ServerConfig>();
+            FileInfo settings_path = new($"{ASM_DIR.FullName}/server-config.json");
 
-            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null);
-
-            using GameServer server = await GameServer.CreateGameServer(config);
+            using GameServer server = await GameServer.CreateGameServer(settings_path);
             IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
             (string a, ConnectionString c)[] conn_str = dns_entry.AddressList.Select(a => (a.ToString(), server.ConnectionString.With(a))).Concat(
                                                         dns_entry.Aliases.Select(a => (a, server.ConnectionString.With(a)))).ToArray();
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => server.SaveServer();
 
             Console.WriteLine($@"
 ----------------------------------------------------------------------------------------
@@ -96,7 +95,7 @@ ll                      lists server players
 d                       reset game and deal cards
 g                       displays game information
 w <player>              emulates win notification for <player>
-
+dbg                     enable/disable debug mode
 q                       stop server
 ------------------------------------------------------------------------------------
 
@@ -115,6 +114,11 @@ q                       stop server
                     server.CurrentGame?.DealCardsAndRestart();
                 else if (cmd.ToLowerInvariant() == "g")
                     server.CurrentGame?.ToString().Info(LogSource.Server);
+                else if (cmd.ToLowerInvariant() == "dbg")
+                    Logger.MinimumSeverityLevel[LogSource.Server] =
+                    Logger.MinimumSeverityLevel[LogSource.WebServer] =
+                        Logger.MinimumSeverityLevel[LogSource.Server] == LogSeverity.Info ||
+                        Logger.MinimumSeverityLevel[LogSource.WebServer] == LogSeverity.Info ? LogSeverity.Debug : LogSeverity.Info;
                 else
                     cmd.Match(new Dictionary<Regex, Action<Match>>()
                     {
@@ -174,14 +178,6 @@ q                       stop server
             while (server.IsRunning);
 
             await server.Stop();
-
-            From.JSON(config = config with
-            {
-                admin_uuids = server.AdminUUIDs?.ToArray() ?? config.admin_uuids,
-                banned_names = server.BannedNames.ToArray(),
-                high_scores = server.HighScores.ToArray(),
-            }).ToFile(settings_path);
-
             await Logger.Stop();
         }
     }

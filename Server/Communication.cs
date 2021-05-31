@@ -251,6 +251,10 @@ namespace SKHEIJO
         public ConnectionString ConnectionString { get; }
         public WebSocketServer WebSocketServer { get; }
         public WebSocketServer? WebSocketServerSSL { get; }
+
+        private ServerConfig _initial_config;
+
+        public FileInfo ConfigurationPath { get; }
         public TcpListener TCPListener { get; }
         public HashSet<string> BannedNames { get; }
         public ConcurrentStack<ServerConfig.HighScore> HighScores { get; }
@@ -267,8 +271,10 @@ namespace SKHEIJO
         public event Action<Player>? OnPlayerLeft;
 
 
-        private GameServer(ConnectionString connection_string, ServerConfig config)
+        private GameServer(FileInfo config_path, ConnectionString connection_string, ServerConfig config)
         {
+            _initial_config = config;
+            ConfigurationPath = config_path;
             ServerName = config.server_name;
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
@@ -339,6 +345,7 @@ namespace SKHEIJO
             if (Interlocked.Exchange(ref _stopping, 1) == 0 && _running != 0)
             {
                 NotifyAll(new CommunicationData_Disconnect(DisconnectReaseon.ServerShutdown));
+                SaveServer();
 
                 Stopwatch sw = new();
 
@@ -361,6 +368,19 @@ namespace SKHEIJO
             }
         }
 
+        public void SaveServer()
+        {
+            From.JSON(_initial_config = _initial_config with
+            {
+                // address = ConnectionString.Address,
+                admin_uuids = AdminUUIDs?.ToArray() ?? _initial_config.admin_uuids,
+                banned_names = BannedNames.ToArray(),
+                high_scores = HighScores.ToArray(),
+            }).ToFile(ConfigurationPath);
+
+            $"Saving server config to '{ConfigurationPath}'.".Log(LogSource.Server);
+        }
+
         public void Dispose()
         {
             Stop().GetAwaiter().GetResult();
@@ -372,6 +392,8 @@ namespace SKHEIJO
         {
             foreach (string name in names)
                 BannedNames.Add(name);
+
+            SaveServer();
         }
 
         private void AddPlayer(Player player, Union<BinaryWriter, WebSocketConnection> connection)
@@ -425,6 +447,8 @@ namespace SKHEIJO
                 AdminUUIDs.Add(player.UUID);
             else
                 AdminUUIDs.Remove(player.UUID);
+
+            SaveServer();
         }
 
         public Player? TryResolvePlayer(string name_or_uuid)
@@ -878,11 +902,14 @@ namespace SKHEIJO
                             HighScores.Push(new(player.UUID, this[player]?.Name, DateTime.Now, points));
 
                     if (HighScores.Count != highscore_count)
+                    {
                         NotifyAll(new CommunicationData_ServerHighScores(HighScores.ToArray()));
+                        SaveServer();
+                    }
                 }
                 // ELSE-IF is pretty important here because tryenterfinalround sets currentgamestate, which invokes this method, which in turn then calls 'next player'
-                else if (game.CurrentPlayer___TryEnterFinalRound())
-                    NotifyGamePlayers(new CommunicationData_Notification("Final game round!"));
+                else if (game.CurrentPlayer___TryEnterFinalRound() && game.FinalRoundInitiator?.UUID is Guid final)
+                    NotifyGamePlayers(new CommunicationData_FinalRound(final));
                 else
                     game.NextPlayer();
             else
@@ -942,9 +969,15 @@ namespace SKHEIJO
 
         #endregion
 
-        public static async Task<GameServer> CreateGameServer(ServerConfig config) =>
-            new(config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
-                                    : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
+        public static async Task<GameServer> CreateGameServer(FileInfo config_path)
+        {
+            ServerConfig? config = From.File(config_path).ToJSON<ServerConfig>();
+
+            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null);
+
+            return new(config_path, config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
+                                                        : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
+        }
     }
 
     public sealed record ServerConfig(
