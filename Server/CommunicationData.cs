@@ -142,6 +142,9 @@ namespace SKHEIJO
     public sealed record CommunicationData_PlayerWin(Guid UUID) : CommunicationData;
 
     // server -> client
+    public sealed record CommunicationData_FinalRound(Guid UUID) : CommunicationData;
+
+    // server -> client
     public sealed record CommunicationData_LeaderBoard(CommunicationData_LeaderBoard.LeaderBoardEntry[] LeaderBoard)
         : CommunicationData
     {
