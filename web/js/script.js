@@ -35,6 +35,7 @@ const TYPE_ANIM_CARD_MOVE = 'AnimateMoveCard';
 const TYPE_ANIM_CARD_FLIP = 'AnimateFlipCard';
 const TYPE_ANIM_COLUMN = 'AnimateColumnDeletion';
 const TYPE_HIGH_SCORES = 'ServerHighScores';
+const TYPE_FINAL_ROUND = 'FinalRound';
 const WAITINGFOR_DRAW = 0;
 const WAITINGFOR_PLAY = 1;
 const WAITINGFOR_DISCARD = 2;
@@ -371,6 +372,8 @@ function process_server_message(type, data)
         animate_column_deletion(data);
     else if (type == TYPE_BOARD_SIZE)
         initial_board_size = { columns: data.Columns, rows: data.Rows };
+    else if (type == TYPE_FINAL_ROUND)
+        show_notification(`Final game round!<br/>${user_to_html(data.UUID)}'s score has been doubled.`);
     else
         console.log('unprocessed:', type, data);
 }
@@ -535,6 +538,16 @@ function get_pile_selector(pile, uuid)
     }
 }
 
+function get_absolute_pos(elem)
+{
+    const bounds = elem[0].getBoundingClientRect();
+
+    return {
+        top: bounds.top,
+        left: bounds.left
+    };
+}
+
 function animate_card_move(data)
 {
     const from = get_pile_selector(data.From, data.UUID);
@@ -555,10 +568,17 @@ function animate_card_move(data)
     const anim_length = 750.0; // ms
     const from_pile = $(from);
     const to_pile = $(to);
-    const from_pos = from_pile[0].getBoundingClientRect();
-    const to_pos = to_pile[0].getBoundingClientRect();
+    const border = 1 + (+window.getComputedStyle($('.pile')[0]).getPropertyValue('padding').replace('px', ''));
+    const from_pos = get_absolute_pos(from_pile);
+    const to_pos = get_absolute_pos(to_pile);
 
-    if (pile.Pile == PILE_DRAW || pile.Pile == PILE_DISCARD)
+    from_pos.left += from_scale * border;
+    from_pos.top += from_scale * border;
+    to_pos.left += to_scale * border;
+    to_pos.top += to_scale * border;
+
+    if (data.From.Pile == PILE_DRAW || data.From.Pile == PILE_DISCARD ||
+        data.To.Pile == PILE_DRAW || data.To.Pile == PILE_DISCARD)
         $('#animation-pile').append(card_b);
 
     $('#animation-pile').append(card_a);
@@ -568,8 +588,19 @@ function animate_card_move(data)
 
     card_a.css('left', from_pos.left + 'px');
     card_a.css('top', from_pos.top + 'px');
-    card_b.css('left', from_pos.left + 'px');
-    card_b.css('top', from_pos.top + 'px');
+
+    if (data.From.Pile == PILE_DRAW || data.From.Pile == PILE_DISCARD)
+    {
+        card_b.css('left', from_pos.left + 'px');
+        card_b.css('top', from_pos.top + 'px');
+    }
+    else
+    {
+        card_b.css('left', to_pos.left + 'px');
+        card_b.css('top', to_pos.top + 'px');
+    }
+
+    card_a.css('transform', `scale(${from_scale})`);
     card_a.animate({
         left: to_pos.left + 'px',
         top: to_pos.top + 'px'
@@ -579,9 +610,9 @@ function animate_card_move(data)
         step: function(now, fx) {
             now /= anim_length;
 
-            $(this).css('transform', `scale(${now * to_scale + (1 - now) * from_scale})`)
-                   .css('left', from_pos.left + 'px')
-                   .css('top', from_pos.top + 'px');
+            $(this).css('transform', `scale(${now * to_scale + (1 - now) * from_scale})`);
+            //     .css('left', from_pos.left + 'px')
+            //     .css('top', from_pos.top + 'px');
         }
     });
 
@@ -597,12 +628,17 @@ function animate_card_move(data)
 function animate_card_flip(data)
 {
     const scale = data.UUID == user_uuid ? 1.0 : +window.getComputedStyle(document.body).getPropertyValue('--player-scale');
+    const border = 1 + (+window.getComputedStyle($('.pile')[0]).getPropertyValue('padding').replace('px', ''));
     const orig = $(get_pile_selector({
         Pile: PILE_USER,
         OptionalRow: data.Row,
         OptionalColumn: data.Column
     }, data.UUID) + ' .card');
-    const position = orig[0].getBoundingClientRect();
+    const position = get_absolute_pos(orig);
+
+    position.left += scale * border;
+    position.top += scale * border;
+
     const card = $(card_to_html(null, 'animated'));
     const anim_length = 750.0; // ms
 
@@ -611,6 +647,7 @@ function animate_card_flip(data)
     orig.hide();
     card.css('left', position.left + 'px');
     card.css('top', position.top + 'px');
+    card.css('transform', `scale(${scale})`);
 
     $({ Counter: 0.0 }).animate({ Counter: anim_length },
     {
