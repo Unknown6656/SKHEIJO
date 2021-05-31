@@ -68,8 +68,11 @@ type 'q' to exit or '?' for help.
 
             do
             {
-                while (!Console.KeyAvailable)
+                while (!Console.KeyAvailable && server.IsRunning)
                     await Task.Delay(10);
+
+                if (!server.IsRunning)
+                    break;
 
                 string cmd = (Console.ReadLine() ?? "").Trim();
 
