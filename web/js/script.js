@@ -376,8 +376,8 @@ function process_server_message(type, data)
 
         if ($('.menu-bar .menu-item[data-tab].active').attr('data-tab') != 'settings')
         {
-            $('init-board-cols').val(initial_board_size.columns);
-            $('init-board-rows').val(initial_board_size.rows);
+            $('#init-board-cols').val(initial_board_size.columns);
+            $('#init-board-rows').val(initial_board_size.rows);
         }
     }
     else if (type == TYPE_FINAL_ROUND)
@@ -511,7 +511,9 @@ function update_server_highscores(highscores)
                 <td>${i + 1}</td>
                 <td>${highscores[i].Points}</td>
                 <td>${user_cache[highscores[i].UUID] == undefined ? highscores[i].LastName : user_to_html(highscores[i].UUID)}</td>
-                <td>${highscores[i].Date}</td>
+                <td>${highscores[i].Date.slice(0,19).replace('T', ', ')}</td>
+                <td>${highscores[i].Players}</td>
+                <td>${highscores[i].Rows} x ${highscores[i].Columns}</td>
             </tr>
         `;
 
@@ -521,8 +523,10 @@ function update_server_highscores(highscores)
                 <th></th>
                 <th>Rank</th>
                 <th>Highscore</th>
-                <th>Player</th>
+                <th>Player Name</th>
                 <th>Date</th>
+                <th>Player Count</th>
+                <th>Game Size</th>
             </tr>
             ${html}
         </table>
