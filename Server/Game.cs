@@ -292,16 +292,16 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___SwapDrawn(int row, int column)
         {
-            if (WaitingFor == GameWaitingFor.Play && CurrentPlayer?.CurrentlyDrawnCard is Card drawn)
+            if (WaitingFor == GameWaitingFor.Play && CurrentPlayer is { CurrentlyDrawnCard: Card drawn } player)
             {
-                $"{CurrentPlayer}: swap drawn card ({drawn}) with {row}-{column}".Log(LogSource.Game);
+                $"{player}: swap drawn card ({drawn}) with {row}-{column}".Log(LogSource.Game);
 
-                CurrentPlayer.CurrentlyDrawnCard = CurrentPlayer.GameField[row, column].card;
-                CurrentPlayer.GameField[row, column] = (drawn, true);
+                player.CurrentlyDrawnCard = player.GameField[row, column].card;
+                player.GameField[row, column] = (drawn, true);
                 WaitingFor = GameWaitingFor.Discard;
 
-                OnCardMoved?.Invoke(this, new(CurrentPlayer.Player.UUID, new(Pile.CurrentlyDrawn), new(Pile.User, row, column), drawn, null));
-                OnCardMoved?.Invoke(this, new(CurrentPlayer.Player.UUID, new(Pile.User, row, column), new(Pile.CurrentlyDrawn), CurrentPlayer.CurrentlyDrawnCard.Value, null));
+                OnCardMoved?.Invoke(this, new(player.Player.UUID, new(Pile.CurrentlyDrawn), new(Pile.User, row, column), drawn, null));
+                OnCardMoved?.Invoke(this, new(player.Player.UUID, new(Pile.User, row, column), new(Pile.CurrentlyDrawn), player.CurrentlyDrawnCard.Value, null));
 
                 return true;
             }
@@ -329,18 +329,18 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___UncoverCard(int row, int column)
         {
-            if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer?.GameField[row, column] is { card: Card card, visible: false })
+            if (WaitingFor == GameWaitingFor.Uncover && CurrentPlayer is PlayerState player && player?.GameField[row, column] is { card: Card card, visible: false })
             {
-                $"{CurrentPlayer}: uncover card {row}-{column}: {card}".Log(LogSource.Game);
+                $"{player}: uncover card {row}-{column}: {card}".Log(LogSource.Game);
 
-                CurrentPlayer.GameField[row, column] = (card, true);
+                player.GameField[row, column] = (card, true);
 
-                if (CurrentPlayer.VisibleCount < 2)
+                if (player.VisibleCount < 2)
                     OnGameStateChanged?.Invoke(this);
                 else
                     WaitingFor = GameWaitingFor.NextPlayer;
 
-                OnCardFlipped?.Invoke(this, new(CurrentPlayer.Player.UUID, row, column, card));
+                OnCardFlipped?.Invoke(this, new(player.Player.UUID, row, column, card));
 
                 return true;
             }
@@ -350,18 +350,18 @@ namespace SKHEIJO
 
         public bool CurrentPlayer___DrawCard(bool from_discard_pile)
         {
-            if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer is { CurrentlyDrawnCard: null })
+            if (WaitingFor == GameWaitingFor.Draw && CurrentPlayer is { CurrentlyDrawnCard: null } player)
             {
-                $"{CurrentPlayer}: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
+                $"{player}: draw card from {(from_discard_pile ? "discard" : "draw")} pile".Log(LogSource.Game);
 
-                CurrentPlayer.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
+                player.CurrentlyDrawnCard = (from_discard_pile ? DiscardPile : DrawPile).Pop();
                 WaitingFor = GameWaitingFor.Play;
 
                 OnCardMoved?.Invoke(this, new(
-                    CurrentPlayer.Player.UUID,
+                    player.Player.UUID,
                     new(from_discard_pile ? Pile.Discard : Pile.Draw),
                     new(Pile.CurrentlyDrawn),
-                    CurrentPlayer.CurrentlyDrawnCard.Value,
+                    player.CurrentlyDrawnCard.Value,
                     from_discard_pile && DiscardPile.Count > 1 ? DiscardPile.Skip(1).First() : null
                 ));
 
@@ -403,7 +403,7 @@ namespace SKHEIJO
         {
             PlayerState next = Players[(CurrentPlayerIndex + 1 + Players.Count) % Players.Count];
 
-            return CurrentGameState is GameState.FinalRound && next.Player.Equals(FinalRoundInitiator) || next.IsFull;
+            return CurrentGameState is GameState.FinalRound && (next.Player.Equals(FinalRoundInitiator) || next.IsFull);
         }
 
         public bool CurrentPlayer___TryEnterFinalRound()
