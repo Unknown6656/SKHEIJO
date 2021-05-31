@@ -388,10 +388,98 @@
                         </p>
                         <h2>Game Rules and Usage</h2>
                         <p>
-                            The goal of SKHEIJO is to score as few points as possible.
-
+                            SKHEIJO is a fairly straight-forward and simple game.
+                            It consists of (at least) 150 cards, each with a numeric value reaching from -2 to +12.
+                            The primary goal is to score as few points as possible.
                         </p>
-                        TODO
+                        <p>
+                            A game of SKHEIJO is played as follows:
+                        </p>
+                        <p>
+                            <ol>
+                                <li>
+                                    Two to ten players join a game.
+                                    This can be done by clicking on the <kbd>Join Game</kbd>-button in the game tab.
+                                    Please note that a game can only be joined if it has not yet been started.
+                                </li>
+                                <li>
+                                    When the game has been started, every player uncovers two cards.
+                                    This can be done by tapping on any card with a blue outline:
+                                    <br/>
+                                    <img src="img/help/help-01.png" height="200"/>
+                                    <img src="img/help/help-02.png" height="200"/>
+                                </li>
+                                <li>
+                                    Each round is played as follows:
+                                    <ol>
+                                        <li>
+                                            A blue border around the player's game field indicates that it is their turn to play.
+                                        </li>
+                                        <li>
+                                            The current player can now draw a card from either the draw pile or the discard pile.
+                                            This is done by dragging the card from the respective pile to the pile labelled "currently drawn".
+                                            <br/>
+                                            <img src="img/help/help-03.png" height="150"/>
+                                            <img src="img/help/help-04.png" height="150"/>
+                                        </li>
+                                        <li>
+                                            The player now has two possibilities:
+                                            <ul>
+                                                <li>
+                                                    The player swaps the currently drawn card with one of their own.
+                                                    This is performed by dragging the card onto the desired pile.
+                                                    The destination pile can contain an uncovered or non-uncoverd card.
+                                                    Valid dragging destinations are highlighted in green.
+                                                    <br/>
+                                                    <img src="img/help/help-05.png" height="200"/>
+                                                    <img src="img/help/help-06.png" height="200"/>
+                                                    <br/>
+                                                    The player now discards the swapped card by dragging it onto the discard pile.
+                                                    <br/>
+                                                    <img src="img/help/help-07.png" height="150"/>
+                                                </li>
+                                                <li>
+                                                    The player discards the currently drawn card.
+                                                    This is performed by dragging the card onto the discard pile.
+                                                    The player is then required to uncover one of their own cards.
+                                                    This can be done by tapping any of the cards highlighted in blue.
+                                                    <br/>
+                                                    <!-- <img src="img/help/help-07.png" height="150"/> -->
+                                                    <img src="img/help/help-08.png" height="200"/>
+                                                    <img src="img/help/help-09.png" height="200"/>
+                                                </li>
+                                            </ul>
+                                        </li>
+                                        <li>
+                                            If any action performed by the player (swapping cards, uncovering cards, etc.) results in a column of identical cards, the column will be removed immediately.
+                                            <br/>
+                                            <img src="img/help/help-10.png" height="200"/>
+                                            <img src="img/help/help-11.png" height="200"/>
+                                        </li>
+                                    </ol>
+                                </li>
+                                <li>
+                                    If a player's game field only consists of uncovered card, the final round is initiated.
+                                    Furhtermore, the player's current points will be doubled.
+                                    It is therefore generally not advisable to initiate the final round (except when possessing a point score smaller than zero).
+                                    <br/>
+                                    <img src="img/help/help-11.png" height="200"/>
+                                    <img src="img/help/help-12.png" height="200"/>
+                                    <br/>
+                                    All players are notified of the final round via a notification.
+                                    <br/>
+                                    <img src="img/help/help-13.png" height="200"/>
+                                </li>
+                                <li>
+                                    After the final round has been initiated, each player
+                                    [TODO]
+                                </li>
+                                <li>
+                                    The player with the lowest point score wins the game.
+                                </li>
+                            </ol>
+                        </p>
+                        TODO: usage instructions
                     </div>
                     <div class="menu-content hidden" data-tab="settings">
                         <h1>User Settings</h1>
@@ -421,14 +509,15 @@
                                 You can change the number of initial rows and columns of cards for each player using the following two input fields:
                             </p>
                             <p>
-                                <input id="init-board-cols" type="number" min="2" max="10" value="4" placeholder="4"/>Rows x
-                                <input id="init-board-rows" type="number" min="2" max="5" value="3" placeholder="3"/>Columns
+                                <input id="init-board-rows" type="number" min="2" max="5" value="3" placeholder="3"/> Rows
+                                &nbsp;x&nbsp;
+                                <input id="init-board-cols" type="number" min="2" max="10" value="4" placeholder="4"/> Columns
                             </p>
                             <p>
                                 <button id="change-init-board-size">Change the number of initial rows and columns</button>
-                                <b>
-                                    Warning: Changing the size will halt the current game and reset it.
-                                </b>
+                                <br/>
+                                <b>Warning:</b>
+                                Changing the size may cause the current game to be stopped and/or reset.
                             </p>
                             <hr/>
                             <h1>Shut down the Server</h1>
@@ -436,9 +525,7 @@
                                 I KNOW WHAT I'M DOING.
                                 <br/>
                                 I KNOW THAT I'LL HAVE TO RESTART THE SERVER MANUALLY.
-                                <br/>
                                 I HAVE PHYSICALL ACCESS TO THE MACHINE ON WHICH THE SERVER IS RUNNING.
-                                <br/>
                                 I KNOW HOW TO RESTART THE SERVER AND/OR HOW TO USE THE COMMAND LINE.
                             </button>
                         </div>
