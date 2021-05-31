@@ -46,7 +46,7 @@ namespace SKHEIJO
 
     public sealed class PlayerState
     {
-        public static (int rows, int columns) InitialDimensions = (3, 4);
+        public static (int rows, int columns) InitialDimensions = (2, 2);
 
         public Game Game { get; }
         public Player Player { get; }
@@ -65,7 +65,7 @@ namespace SKHEIJO
         {
             Game = game;
             Player = player;
-            Dimensions = InitialDimensions;
+            Dimensions = (game.InitialRows, game.InitialColumns);
             GameField = new (Card, bool)[Dimensions.rows, Dimensions.columns];
         }
 
@@ -125,6 +125,8 @@ namespace SKHEIJO
         private GameState _state;
         private GameWaitingFor _waiting;
 
+        public int InitialRows { get; }
+        public int InitialColumns { get; }
         public Stack<Card> DrawPile { get; }
         public Stack<Card> DiscardPile { get; }
         public List<PlayerState> Players { get; }
@@ -176,11 +178,14 @@ namespace SKHEIJO
         public event Action<Game>? OnGameStateChanged;
 
 
-        public Game(IEnumerable<Player>? players = null)
+        internal Game(IEnumerable<Player>? players = null)
         {
+            (InitialRows, InitialColumns) = PlayerState.InitialDimensions;
             Players = (players ?? Array.Empty<Player>()).ToList(p => new PlayerState(this, p));
             CurrentGameState = GameState.Stopped;
+
             NextPlayer(0);
+
             DrawPile = new();
             DiscardPile = new();
         }
