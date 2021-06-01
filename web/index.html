@@ -253,6 +253,7 @@
                     <div class="menu-item" data-tab="leaderboard"></div>
                     <div class="menu-item" data-tab="players"></div>
                     <div class="menu-item" data-tab="share"></div>
+                    <div class="menu-item" data-tab="chat"></div>
                     <div class="menu-item" data-tab="notifications"></div>
                     <div class="menu-spacer"></div>
                     <div class="menu-item" data-tab="settings"></div>
@@ -311,6 +312,12 @@
                             <span id="player-count">0</span> player(s) connected:
                         </p>
                         <div id="player-list"></div>
+                        <p class="admin-only">
+                            Players can be elevated to administrator by editing the document <code>server-config.json</code> and
+                            adding the respective UUIDs to the <code>/admin_uuids</code>-element.
+                            <br/>
+                            The server must not be running for the changes to take effect -- they are overwritten otherwise.
+                        </p>
                     </div>
                     <div class="menu-content hidden" data-tab="leaderboard">
                         <h1>Game League Table</h1>
@@ -326,6 +333,12 @@
                             Please note that the best SKHEIJO players aim for the lowest point score.
                         </p>
                         <div id="highscore-list"></div>
+                        <p class="admin-only">
+                            To delete the server highscores, please navigate to the document <code>server-config.json</code> and remove
+                            the element <code>/high_scores</code>.
+                            <br/>
+                            The server must not be running for the changes to take effect -- they are overwritten otherwise.
+                        </p>
                     </div>
                     <div class="menu-content hidden" data-tab="notifications">
                         <h1>Notification Overview</h1>
@@ -384,7 +397,7 @@
                     <div class="menu-content hidden" data-tab="help">
                         <h1>Help / About</h1>
                         <p>
-                            TODO
+                            [TODO]
                         </p>
                         <h2>Game Rules and Usage</h2>
                         <p>
@@ -403,7 +416,17 @@
                                     Please note that a game can only be joined if it has not yet been started.
                                 </li>
                                 <li>
-                                    When the game has been started, every player uncovers two cards.
+                                    An administrator starts the game if two or more people have joined the game.
+                                    <br/>
+                                    <b>
+                                        Note to Administrators:
+                                    </b>
+                                    This can either be done using the server command line
+                                    by typing the command "<code>deal</code>" (short for "deal cards"), or by pressing
+                                    the <kbd>Start Game</kbd>-button.
+                                </li>
+                                <li>
+                                    After the game has been started, every player uncovers two cards.
                                     This can be done by tapping on any card with a blue outline:
                                     <br/>
                                     <img src="img/help/help-01.png" height="200"/>
@@ -424,7 +447,7 @@
                                         </li>
                                         <li>
                                             The player now has two possibilities:
-                                            <ul>
+                                            <ol>
                                                 <li>
                                                     The player swaps the currently drawn card with one of their own.
                                                     This is performed by dragging the card onto the desired pile.
@@ -448,7 +471,7 @@
                                                     <img src="img/help/help-08.png" height="200"/>
                                                     <img src="img/help/help-09.png" height="200"/>
                                                 </li>
-                                            </ul>
+                                            </ol>
                                         </li>
                                         <li>
                                             If any action performed by the player (swapping cards, uncovering cards, etc.) results in a column of identical cards, the column will be removed immediately.
@@ -459,16 +482,16 @@
                                     </ol>
                                 </li>
                                 <li>
-                                    If a player's game field only consists of uncovered card, the final round is initiated.
+                                    If a player's game field only consists of uncovered cards, the final round is initiated.
                                     Furhtermore, the player's current points will be doubled.
                                     It is therefore generally not advisable to initiate the final round (except when possessing a point score smaller than zero).
                                     <br/>
-                                    <img src="img/help/help-11.png" height="200"/>
                                     <img src="img/help/help-12.png" height="200"/>
+                                    <img src="img/help/help-13.png" height="200"/>
                                     <br/>
                                     All players are notified of the final round via a notification.
                                     <br/>
-                                    <img src="img/help/help-13.png" height="200"/>
+                                    <img src="img/help/help-14.png"/>
                                 </li>
                                 <li>
                                     After the final round has been initiated, each player
@@ -489,7 +512,7 @@
                             Do not share your UUID with other players &#8212; only with the server administrator when required to do so.
                             You can reset your UUID in the logout-menu (<img src="img/menu-logout.svg" style="height: .8em;"/>).
                         </p>
-                        <input id="user-uuid" type="text" readonly placeholder="{00000000-0000-0000-0000-000000000000}"/>
+                        <code id="user-uuid">{00000000-0000-0000-0000-000000000000}</code>
                         <p>
                             You can change your user name / alias in the text box below.
                             Confirm your change by typing <kbd>ENTER</kbd>.
@@ -519,6 +542,12 @@
                                 <b>Warning:</b>
                                 Changing the size may cause the current game to be stopped and/or reset.
                             </p>
+                            <p>
+                                The initial board size may also be changed by navigating to the document <code>server-config.json</code>
+                                and changing the values of <code>/init_board_size/rows</code> and <code>/init_board_size/rows</code> manually.
+                                <br/>
+                                The server must not be running for the changes to take effect -- they are overwritten otherwise.
+                            </p>
                             <hr/>
                             <h1>Shut down the Server</h1>
                             <button id="shut-down-server">
@@ -528,6 +557,26 @@
                                 I HAVE PHYSICALL ACCESS TO THE MACHINE ON WHICH THE SERVER IS RUNNING.
                                 I KNOW HOW TO RESTART THE SERVER AND/OR HOW TO USE THE COMMAND LINE.
                             </button>
+                        </div>
+                    </div>
+                    <div class="menu-content hidden" data-tab="chat">
+                        <div class="chat-container">
+                            <div class="chat-header">
+                                <h1>Server-wide chat room</h1>
+                                Please be civil.
+                            </div>
+                            <div id="chat-message-list" class="chat-messages"></div>
+                            <div class="chat-footer">
+                                <div id="chat-input">
+                                    [TODO]
+                                </div>
+                                <div id="chat-indicator">
+                                    [TODO]
+                                </div>
+                                <div id="chat-send">
+                                    [TODO]
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
