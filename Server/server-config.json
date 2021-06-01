@@ -12,6 +12,7 @@
         use the public ip address fetched from https://api64.ipify.org/.
     */
     "local_server": true,
+    "chat_path": "chat-messages.json",
     /*
         Use a value of >null< for "certificate_path", if you do not want to use wss:// instead
         of ws://. The certificate path must point to a valid x509 PFX/PKSC12 certificate
@@ -33,6 +34,15 @@
         "daaab20b-9c78-4d25-8bb6-9f36c7755bb3"
     ],
     "high_scores": [
+        {
+            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
+            "LastName": "ultra-wide sugar",
+            "Date": "2021-06-01T11:40:40.5779629+02:00",
+            "Points": -8,
+            "Rows": 2,
+            "Columns": 2,
+            "Players": 2
+        },
         {
             "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
             "LastName": "ultra-wide sugar",
