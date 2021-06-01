@@ -46,7 +46,7 @@ namespace Server
     ALT. INVITATIONS:
     {conn_str.Select(t => $"{t.a,40}: {t.c}").StringJoin("\n    ")}
 ----------------------------------------------------------------------------------------
-type 'q' to exit or '?' for help.
+type 'stop' to exit or '?' for help.
 ");
 
             server.OnIncomingData += (p, o, r) =>
@@ -57,14 +57,15 @@ type 'q' to exit or '?' for help.
             };
             server.Start();
 
-            Regex R_OP = new(@"^o\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_UNOP = new(@"^u\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_KICK = new(@"^k\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_SAY = new(@"^@\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_SAY_PRIVATE = new(@"^@(?<p>.+)@\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_ADD = new(@"^a\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_REMOVE = new(@"^v\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_WIN = new(@"^w\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_OP = new(@"^op\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_UNOP = new(@"^unop\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_KICK = new(@"^kick\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_SAY = new(@"^notify\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_SAY_PRIVATE = new(@"^notify@\s*(?<p>.+)\s*@\s*(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_ADD = new(@"^add\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_REMOVE = new(@"^remove\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_WIN = new(@"^win\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_CHAT = new(@"^chat\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
             do
             {
@@ -76,44 +77,45 @@ type 'q' to exit or '?' for help.
 
                 string cmd = (Console.ReadLine() ?? "").Trim();
 
-                if (cmd.ToLowerInvariant() == "q")
+                if (cmd.ToLowerInvariant() == "stop")
                     break;
                 else if (cmd == "?")
                     @"
 
 --------------------------------------- HELP ---------------------------------------
-?                       display this help text
-c                       clear console
-o <player>              makes <player> admin
-u <player>              makes <player> regular player
-k <player>              kicks <player> from the server
-@ <message>             sends <message> to every player
-@<player>@ <message>    sends <message> to <player>
-r                       reset/restart game
-a <player>              adds <player> to the game
-aa                      adds all (possible) players to the game
-v <player>              removes <player> from the game
-l                       lists game players
-ll                      lists server players
-d                       reset game and deal cards
-g                       displays game information
-w <player>              emulates win notification for <player>
-dbg                     enable/disable debug mode
-q                       stop server
+?                              display this help text
+clear                          clear console
+op <player>                    makes <player> admin
+unop <player>                  makes <player> regular player
+kick <player>                  kicks <player> from the server
+notify <message>               sends <message> to every player
+notify@ <player> @ <message>   sends <message> to <player>
+chat <message>                 write <message> to the chat
+reset                          reset/restart game
+add <player>                   adds <player> to the game
+aadd                           adds all (possible) players to the game
+remove <player>                removes <player> from the game
+l                              lists game players
+ll                             lists server players
+deal                           reset game and deal cards
+g                              displays game information
+win <player>                   emulates win notification for <player>
+dbg                            enable/disable debug mode
+stop                           stop server
 ------------------------------------------------------------------------------------
 
 ".Info(LogSource.Server);
-                else if (cmd.ToLowerInvariant() == "c")
+                else if (cmd.ToLowerInvariant() == "clear")
                     Console.Clear();
-                else if (cmd.ToLowerInvariant() == "r")
+                else if (cmd.ToLowerInvariant() == "reset")
                     server.ResetNewGame();
-                else if (cmd.ToLowerInvariant() == "aa")
+                else if (cmd.ToLowerInvariant() == "aadd")
                     server.TryAddAllConnectedPlayersToGame();
                 else if (cmd.ToLowerInvariant() == "ll")
                     ($"{server._players} Players:\n- " + server._players.Select(kvp => kvp.Value).StringJoin("\n- ")).Info(LogSource.Server);
                 else if (cmd.ToLowerInvariant() == "l")
                     server.CurrentGame?.Players.Select(p => "\n" + p).StringJoin("\n").Info(LogSource.Server);
-                else if (cmd.ToLowerInvariant() == "d")
+                else if (cmd.ToLowerInvariant() == "deal")
                     server.CurrentGame?.DealCardsAndRestart();
                 else if (cmd.ToLowerInvariant() == "g")
                     server.CurrentGame?.ToString().Info(LogSource.Server);
@@ -160,6 +162,7 @@ q                       stop server
                             else
                                 $"Unknown player '{m.Groups["p"]}'.".Err(LogSource.Server);
                         },
+                        [R_CHAT] = m => server.ProcessChatMessage(Guid.Empty, m.Groups["m"].Value),
                         [R_SAY] = m => server.NotifyAll(new CommunicationData_Notification(m.Groups["m"].Value)),
                         [R_ADD] = m =>
                         {
