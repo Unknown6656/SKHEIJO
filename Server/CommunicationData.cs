@@ -162,5 +162,25 @@ namespace SKHEIJO
 
     // server -> client
     public sealed record CommunicationData_ServerHighScores(ServerConfig.HighScore[] HighScores) : CommunicationData;
+
+    // client -> server
+    public sealed record CommunicationData_SendChatMessage(string Content) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_ChatMessageMention(Guid UUID) : CommunicationData;
+
+    // server -> client
+    public sealed record CommunicationData_ChatMessages(CommunicationData_ChatMessages.ChatMessage[] Messages)
+        : CommunicationData
+    {
+        public sealed record ChatMessage(Guid UUID, DateTime Time, string Content);
+
+        /*
+            CHAT MESSAGE CONTENT:
+
+                {{xxxxxxxxxxx}}     ->      UUID
+                
+         */
+    }
 }
 
