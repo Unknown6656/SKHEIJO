@@ -677,6 +677,10 @@ body.ready #background-container {
     background-image: url('../img/menu-share.svg');
 }
 
+.menu-item[data-tab="chat"] {
+    background-image: url('../img/menu-chat.svg');
+}
+
 .menu-item[data-tab="help"] {
     background-image: url('../img/menu-help.svg');
 }
@@ -976,6 +980,84 @@ span.player-name[data-is-me]::after {
     justify-content: center;
     display: flex;
     padding: 10px;
+}
+
+.menu-content[data-tab="chat"] {
+    position: relative;
+    flex-flow: column;
+    display: flex;
+    padding: 0px;
+    height: 100%;
+    width: 100%;
+}
+
+.chat-container {
+    flex-direction: column;
+    position: relative;
+    display: flex;
+    height: 100%;
+    width: auto;
+}
+
+.chat-container > * {
+    position: relative;
+    width: 100%;
+}
+
+.chat-header {
+    border-bottom: 1px solid var(--color-fg);
+    background-color: var(--color-bg);
+    padding: 10px 10px 10px 20px;
+}
+
+.chat-footer {
+    border-top: 1px solid var(--color-fg);
+    background-color: var(--color-bg);
+    flex-direction: row;
+    display: flex;
+}
+
+.chat-messages {
+    flex-direction: column;
+    overflow: auto;
+    display: flex;
+    padding: 10px;
+    height: 100%;
+}
+
+.chat-messages .message {
+    flex-direction: column;
+    margin-bottom: 10px;
+    margin-right: auto;
+    margin-left: 0;
+    min-width: 250px;
+    max-width: 90%;
+    display: flex;
+}
+
+.chat-messages .message.outgoing {
+    margin-right: 0;
+    margin-left: auto;
+    /* background-color: var(--color-bg-active); */
+}
+
+.chat-messages .message .message-content {
+    border: 1px solid var(--color-fg);
+    background-color: var(--color-bg-hover);
+    padding: 5px;
+}
+
+.chat-messages .message.outgoing .message-content {
+    background-color: var(--color-bg-active);
+}
+
+.chat-messages .message .message-meta {
+    flex-direction: row;
+    display: flex;
+}
+
+.chat-messages .message.outgoing .message-meta {
+    margin-right: auto;
 }
 
 #main-game {
