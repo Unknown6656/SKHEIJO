@@ -1160,7 +1160,7 @@ namespace SKHEIJO
         }
     }
 
-    [Obsolete]
+    [Obsolete(null, error: true)]
     public sealed class GameClient
         : IDisposable
     {
