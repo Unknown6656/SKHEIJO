@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 using System.Security.Authentication;
+using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -248,9 +249,13 @@ namespace SKHEIJO
     public sealed class GameServer
         : IDisposable
     {
+        private static readonly Regex REGEX_UUID = new(@"^\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         internal readonly ConcurrentDictionary<Player, PlayerInfo> _players;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _incoming;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _outgoing;
+        private readonly ConcurrentQueue<CommunicationData_ChatMessages.ChatMessage> _chat;
+        private ServerConfig _initial_config;
         private volatile int _running;
         private volatile int _stopping;
 
@@ -260,8 +265,7 @@ namespace SKHEIJO
         public WebSocketServer WebSocketServer { get; }
         public WebSocketServer? WebSocketServerSSL { get; }
 
-        private ServerConfig _initial_config;
-
+        public FileInfo ChatMessagesPath { get; }
         public FileInfo ConfigurationPath { get; }
         public TcpListener TCPListener { get; }
         public HashSet<string> BannedNames { get; }
@@ -281,17 +285,25 @@ namespace SKHEIJO
 
         private GameServer(FileInfo config_path, ConnectionString connection_string, ServerConfig config)
         {
+            Directory.SetCurrentDirectory(config_path.Directory!.FullName);
+
             _initial_config = config;
             ConfigurationPath = config_path;
+            ChatMessagesPath = new(Path.Combine(config_path.Directory!.FullName, config.chat_path));
             ServerName = config.server_name;
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
             CurrentGame = null;
             HighScores = new();
+            AdminUUIDs = new();
             _players = new();
             _incoming = new();
             _outgoing = new();
-            AdminUUIDs = new();
+            _chat = new();
+
+            if (ChatMessagesPath.Exists)
+                From.File(ChatMessagesPath).ToJSON<CommunicationData_ChatMessages.ChatMessage[]>().Do(_chat.Enqueue);
+
             TCPListener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Ports.CSharp));
             WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WS}", true);
             WebSocketServer.ListenerSocket.NoDelay = true;
@@ -317,6 +329,7 @@ namespace SKHEIJO
 
             if (config.init_board_size is ( > 1, > 1))
                 PlayerState.InitialDimensions = config.init_board_size;
+
         }
 
         public void Start()
@@ -345,6 +358,22 @@ namespace SKHEIJO
                             }
                         else
                             await Task.Delay(5);
+                });
+                Task.Factory.StartNew(async delegate
+                {
+                    int last = _chat.Count;
+
+                    while (_running != 0)
+                        if (last != _chat.Count)
+                        {
+                            SaveMessages();
+
+                            last = _chat.Count;
+                        }
+                        else
+                            await Task.Delay(1000);
+
+                    SaveMessages();
                 });
                 Task.Factory.StartNew(ProcessIncomingMessages);
                 Task.Factory.StartNew(ProcessOutgoingMessages);
@@ -386,6 +415,7 @@ namespace SKHEIJO
 
         public void SaveServer()
         {
+            Directory.SetCurrentDirectory(ConfigurationPath.Directory!.FullName);
             From.JSON(_initial_config = _initial_config with
             {
                 // address = ConnectionString.Address,
@@ -395,8 +425,12 @@ namespace SKHEIJO
                 init_board_size = PlayerState.InitialDimensions,
             }).ToFile(ConfigurationPath);
 
+            SaveMessages();
+
             $"Saving server config to '{ConfigurationPath}'.".Log(LogSource.Server);
         }
+
+        public void SaveMessages() => From.JSON(_chat.ToArray()).ToFile(ChatMessagesPath);
 
         public void Dispose()
         {
@@ -429,6 +463,7 @@ namespace SKHEIJO
                 BroadcastCurrentGameState(game, new[] { player });
 
             Notify(player, new CommunicationData_ServerHighScores(HighScores.ToArray()));
+            Notify(player, new CommunicationData_ChatMessages(_chat.ToArray()));
         }
 
         private void RemovePlayer(Player player)
@@ -761,6 +796,10 @@ namespace SKHEIJO
                         return CommunicationData_SuccessError.OK;
                     else
                         return new CommunicationData_SuccessError(false, "Invalid game move.");
+                case CommunicationData_SendChatMessage(string content):
+                    ProcessChatMessage(player.UUID, content);
+
+                    return CommunicationData_SuccessError.OK;
                 case CommunicationData_AdminCommand admin_request:
                     if (this[player] is not { IsAdmin: true })
                         return new CommunicationData_SuccessError(false, "Unable to execute command: You must be an administrator.");
@@ -868,6 +907,79 @@ namespace SKHEIJO
                 default:
                     return OnIncomingData?.Invoke(player, message, reply_requested);
             }
+        }
+
+        public void ProcessChatMessage(Guid UUID, string content)
+        {
+            content = content.Trim().SplitIntoLines().Select(s => s.Trim()).StringJoin("\n");
+
+            StringBuilder sanitized = new();
+            HashSet<Guid> mentioned = new();
+            char? surrogate = null;
+            bool whitespace = true;
+            int newlines = 10;
+
+            for (int index = 0; index < content.Length; ++index)
+            {
+                char c = content[index];
+
+                if (surrogate is char surr && !char.IsSurrogatePair(surr, c))
+                    surrogate = null;
+
+                if (char.IsLetterOrDigit(c))
+                {
+                    sanitized.Append(c);
+                    whitespace = false;
+                    newlines = 0;
+                }
+                else if (c is '\n')
+                {
+                    ++newlines;
+                    whitespace = true;
+
+                    if (newlines <= 2)
+                        sanitized.Append("<br/>");
+                }
+                else if (c is '\r' || char.IsWhiteSpace(c) || char.IsControl(c) || char.IsSeparator(c))
+                {
+                    if (!whitespace)
+                        sanitized.Append(' ');
+
+                    whitespace = true;
+                }
+                else if (char.IsHighSurrogate(c))
+                    surrogate = c;
+                else if (surrogate is char)
+                {
+                    int code_point = char.ConvertToUtf32(surrogate.Value, c);
+
+                    sanitized.Append($"&#{code_point};");
+                    surrogate = null;
+                }
+                else if (c is '{' && index < content.Length - 1 && content[index..].Match(REGEX_UUID, out Match match))
+                {
+                    if (Guid.TryParse(match.Value[1..^1], out Guid uuid))
+                        mentioned.Add(uuid);
+
+                    sanitized.Append(match.Value);
+                    whitespace = false;
+                    newlines = 0;
+                    index += match.Length - 1;
+                }
+                else
+                {
+                    sanitized.Append($"&#{(int)c};");
+                    whitespace = false;
+                    newlines = 0;
+                }
+            }
+
+            _chat.Enqueue(new(UUID, DateTime.Now, sanitized.ToString()));
+            NotifyAll(new CommunicationData_ChatMessages(_chat.ToArray()));
+
+            foreach (Guid uuid in mentioned)
+                if (uuid != UUID && this[UUID]?.Player is Player p)
+                    Notify(p, new CommunicationData_ChatMessageMention(UUID));
         }
 
         #endregion
@@ -1001,7 +1113,21 @@ namespace SKHEIJO
         {
             ServerConfig? config = From.File(config_path).ToJSON<ServerConfig>();
 
-            config ??= new("0.0.0.0", 42087, 42088, 42089, false, null, "", "test server", new string[] { "admin", "server" }, null, null, PlayerState.InitialDimensions);
+            config ??= new(
+                address: "0.0.0.0",
+                port_tcp: 42087,
+                port_ws: 42088,
+                port_wss: 42089,
+                local_server: false,
+                chat_path: "chat-messages.json",
+                certificate_path: null,
+                pfx_password: "",
+                server_name: "test server",
+                banned_names: new string[] { "admin", "server" },
+                admin_uuids: null,
+                high_scores: null,
+                init_board_size: PlayerState.InitialDimensions
+            );
 
             return new(config_path, config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
                                                         : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
@@ -1014,6 +1140,7 @@ namespace SKHEIJO
         ushort port_ws,
         ushort port_wss,
         bool local_server,
+        string chat_path,
         string? certificate_path,
         string pfx_password,
         string server_name,
