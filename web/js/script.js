@@ -36,6 +36,9 @@ const TYPE_ANIM_CARD_FLIP = 'AnimateFlipCard';
 const TYPE_ANIM_COLUMN = 'AnimateColumnDeletion';
 const TYPE_HIGH_SCORES = 'ServerHighScores';
 const TYPE_FINAL_ROUND = 'FinalRound';
+const TYPE_SEND_CHAT = 'SendChatMessage';
+const TYPE_CHAT_MENTION = 'ChatMessageMention';
+const TYPE_CHAT_UPDATE = 'ChatMessages';
 const WAITINGFOR_DRAW = 0;
 const WAITINGFOR_PLAY = 1;
 const WAITINGFOR_DISCARD = 2;
@@ -94,7 +97,7 @@ if (user_uuid_obj == null)
 
 let user_uuid = user_uuid_obj.toString();
 
-$('#user-uuid').val(`{${user_uuid}}`);
+$('#user-uuid').html(`{${user_uuid}}`);
 
 
 let current_url = new URL(window.location.href);
@@ -382,6 +385,10 @@ function process_server_message(type, data)
     }
     else if (type == TYPE_FINAL_ROUND)
         show_notification(`Final game round!<br/>${user_to_html(data.UUID)}'s score has been doubled.`);
+    else if (type == TYPE_CHAT_MENTION)
+        show_notification(`${user_to_html(data.UUID)} has mentioned you in a chat message.`);
+    else if (type == TYPE_CHAT_UPDATE)
+        update_chat_messages(data.Messages);
     else
         console.log('unprocessed:', type, data);
 }
@@ -550,14 +557,28 @@ function get_pile_selector(pile, uuid)
     }
 }
 
-function get_absolute_pos(elem)
+function get_card_position(pile, scale)
 {
-    const bounds = elem[0].getBoundingClientRect();
+    let card = undefined;
 
-    return {
+    if (pile.hasClass("pile"))
+        card = pile.find(".card")[0];
+
+    const bounds = (card || pile[0]).getBoundingClientRect();
+    const position = {
         top: bounds.top,
         left: bounds.left
     };
+
+    if (pile.hasClass("pile") && card == undefined)
+    {
+        const border = 1 + (+window.getComputedStyle($('.pile')[0]).getPropertyValue('padding').replace('px', ''));
+
+        position.top += border * scale;
+        position.left += border * scale;
+    }
+
+    return position;
 }
 
 function animate_card_move(data)
@@ -580,14 +601,8 @@ function animate_card_move(data)
     const anim_length = 750.0; // ms
     const from_pile = $(from);
     const to_pile = $(to);
-    const border = 1 + (+window.getComputedStyle($('.pile')[0]).getPropertyValue('padding').replace('px', ''));
-    const from_pos = get_absolute_pos(from_pile);
-    const to_pos = get_absolute_pos(to_pile);
-
-    from_pos.left += from_scale * border;
-    from_pos.top += from_scale * border;
-    to_pos.left += to_scale * border;
-    to_pos.top += to_scale * border;
+    const from_pos = get_card_position(from_pile, from_scale);
+    const to_pos = get_card_position(to_pile, to_scale);
 
     if (data.From.Pile == PILE_DRAW || data.From.Pile == PILE_DISCARD ||
         data.To.Pile == PILE_DRAW || data.To.Pile == PILE_DISCARD)
@@ -640,17 +655,13 @@ function animate_card_move(data)
 function animate_card_flip(data)
 {
     const scale = data.UUID == user_uuid ? 1.0 : +window.getComputedStyle(document.body).getPropertyValue('--player-scale');
-    const border = 1 + (+window.getComputedStyle($('.pile')[0]).getPropertyValue('padding').replace('px', ''));
-    const orig = $(get_pile_selector({
+    const pile = $(get_pile_selector({
         Pile: PILE_USER,
         OptionalRow: data.Row,
         OptionalColumn: data.Column
-    }, data.UUID) + ' .card');
-    const position = get_absolute_pos(orig);
-
-    position.left += scale * border;
-    position.top += scale * border;
-
+    }, data.UUID));
+    const position = get_card_position(pile, scale);
+    const orig = pile.find('.card');
     const card = $(card_to_html(null, 'animated'));
     const anim_length = 750.0; // ms
 
@@ -747,6 +758,40 @@ function user_to_html(uuid)
         </span>
     `;
 }
+
+function update_chat_messages(messages)
+{
+    let html = '';
+
+    for (const message of messages)
+    {
+        const content = message.Content.replace(/\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}/gi, m =>
+        {
+            const uuid = m.slice(2, -2);
+
+            return `<span class="message-mention" data-uuid="${uuid}">${user_to_html(uuid)}</span>`;
+        });
+
+        html += `
+            <div class="message ${message.UUID == user_uuid ? 'outgoing' : ''}">
+                <div class="message-content">${content}</div>
+                <div class="message-meta">
+                    <span class="message-sender">${user_to_html(message.UUID)}</span>
+                    &nbsp;
+                    <div class="message-time">${message.Time.slice(0, 19).replace('T', ', ')}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    $('#chat-message-list').html(html);
+}
+
+
+TYPE_SEND_CHAT; // TODO
+
+
+
 
 /* 'pile' has the values 'user-x-x', 'draw', 'discard', or 'current'. */
 function card_to_html(card, pile)
@@ -1193,13 +1238,15 @@ function upate_user_info(uuid)
             };
 
             if (uuid == user_uuid)
+            {
                 if (response.IsAdmin)
                     $('#main-container').addClass('admin');
                 else
                     $('#main-container').removeClass('admin');
 
-            if (!$('#user-name').is(':focus'))
-                $('#user-name').val(response.Name);
+                if (!$('#user-name').is(':focus'))
+                    $('#user-name').val(response.Name);
+            }
         }
 
         update_server_and_player_info();
@@ -1428,6 +1475,7 @@ share_handler('email', (u, t) => `mailto:?subject=${encodeURI(t)}&body=${encodeU
 if (navigator.share)
     $('#share-container .share[data-service="native"]').click(async () => await navigator.share({
         url: $('#share-url').text(),
+        text: 'SKHEIJO game on ' + current_url.hostname,
         title: 'SKHEIJO game on ' + current_url.hostname
     }));
 
