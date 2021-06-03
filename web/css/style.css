@@ -1010,19 +1010,12 @@ span.player-name[data-is-me]::after {
     padding: 10px 10px 10px 20px;
 }
 
-.chat-footer {
-    border-top: 1px solid var(--color-fg);
-    background-color: var(--color-bg);
-    flex-direction: row;
-    display: flex;
-}
-
 .chat-messages {
     flex-direction: column;
     overflow: auto;
     display: flex;
     padding: 10px;
-    height: 100%;
+    flex-grow: 1;
 }
 
 .chat-messages .message {
@@ -1035,6 +1028,10 @@ span.player-name[data-is-me]::after {
     display: flex;
 }
 
+.chat-messages .message.chained {
+    margin-bottom: 1px;
+}
+
 .chat-messages .message.outgoing {
     margin-right: 0;
     margin-left: auto;
@@ -1042,7 +1039,8 @@ span.player-name[data-is-me]::after {
 }
 
 .chat-messages .message .message-content {
-    border: 1px solid var(--color-fg);
+    border-radius: 10px;
+    border: 1px solid var(--color-control-fg-disabled);
     background-color: var(--color-bg-hover);
     padding: 5px;
 }
@@ -1058,6 +1056,86 @@ span.player-name[data-is-me]::after {
 
 .chat-messages .message.outgoing .message-meta {
     margin-right: auto;
+}
+
+.chat-footer {
+    border-top: 1px solid var(--color-fg);
+    background-color: var(--color-bg);
+    flex-direction: row;
+    align-items: center;
+    max-height: 250px;
+    display: flex;
+}
+
+#chat-input {
+    border-right: 1px solid var(--color-fg);
+    background-color: var(--color-control-bg);
+    position: relative;
+    overflow: auto;
+    height: 100%;
+    width: 100%;
+}
+
+#chat-input .input,
+#chat-input .placeholder {
+    padding: 5px;
+    width: 100%;
+    left: 0px;
+    top: 0px;
+}
+
+#chat-input .input {
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 100%;
+}
+
+#chat-input .placeholder {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+     -khtml-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+            user-select: none;
+    pointer-events: none;
+    position: absolute;
+    font-style: italic;
+    color: dimgray;
+    height: 100%;
+    opacity: 0;
+}
+
+#chat-input .input:empty ~ .placeholder {
+    opacity: 1;
+}
+
+#chat-send {
+    background-image: url('../img/send-message.svg');
+}
+
+#chat-mention {
+    background-image: url('../img/mention-user.svg');
+}
+
+#chat-send,
+#chat-mention {
+    background-color: var(--color-bg);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 25px;
+    cursor: pointer;
+    height: 30px;
+    width: 30px;
+}
+
+#chat-send:hover,
+#chat-mention:hover {
+    background-color: var(--color-bg-hover);
+}
+
+#chat-send:active,
+#chat-mention:active {
+    background-color: var(--color-bg-active);
 }
 
 #main-game {
