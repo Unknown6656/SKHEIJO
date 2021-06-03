@@ -763,23 +763,34 @@ function update_chat_messages(messages)
 {
     let html = '';
 
-    for (const message of messages)
+    for (let i = 0; i < messages.length; ++i)
     {
+        const message = messages[i];
         const content = message.Content.replace(/\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}/gi, m =>
         {
             const uuid = m.slice(2, -2);
 
             return `<span class="message-mention" data-uuid="${uuid}">${user_to_html(uuid)}</span>`;
         });
+        let chained = false;
+
+        if (i < messages.length - 1 && message.UUID == messages[i + 1].UUID)
+        {
+            const tdiff_ms = Math.abs(new Date(messages[i + 1].Time) - new Date(message.Time));
+
+            chained = tdiff_ms / 60000.0 < 20;
+        }
 
         html += `
-            <div class="message ${message.UUID == user_uuid ? 'outgoing' : ''}">
+            <div class="message ${message.UUID == user_uuid ? 'outgoing' : ''} ${chained ? 'chained' : ''}">
                 <div class="message-content">${content}</div>
+                ${chained ? '' : `
                 <div class="message-meta">
                     <span class="message-sender">${user_to_html(message.UUID)}</span>
                     &nbsp;
                     <div class="message-time">${message.Time.slice(0, 19).replace('T', ', ')}</div>
                 </div>
+                `}
             </div>
         `;
     }
@@ -1452,6 +1463,87 @@ $('#change-init-board-size').click(() => server_send_query(TYPE_BOARD_SIZE, {
     if (!data.Success)
         show_notification(data.Message, false);
 }));
+
+
+function insert_at_selection(element, content)
+{
+    const selection = window.getSelection();
+    const range = selection.getRangeAt(0);
+
+    element = element[0] || element;
+
+    if (range.commonAncestorContainer == element || range.commonAncestorContainer.parentNode == element)
+    {
+        const node = document.createTextNode(content);
+
+        range.deleteContents();
+        range.insertNode(node);
+        range.selectNodeContents(node);
+        range.collapse(false);
+        // return {
+        //     pos: range.startOffset,
+        //     len: range.startOffset - range.endOffset
+        // };
+    }
+}
+
+$('#chat-input .input').on('focus', function()
+{
+    const $this = $(this);
+
+    $this.data('before', $this.html());
+}).on('paste', e =>
+{
+    let text = undefined;
+
+    if (e.clipboardData || e.originalEvent.clipboardData)
+        text = (e.originalEvent || e).clipboardData.getData('text/plain');
+    else if (window.clipboardData)
+        text = window.clipboardData.getData('Text');
+
+    if (text != undefined)
+    {
+        e.preventDefault();
+        insert_at_selection(e.target, text);
+    }
+
+    $(e.target).trigger('change');
+}).on('blur keyup input', function()
+{
+    const $this = $(this);
+
+    if ($this.data('before') !== $this.html())
+    {
+        $this.data('before', $this.html());
+        $this.trigger('change');
+    }
+}).keypress(e =>
+{
+    if (e.keyCode == 13)
+        $('#chat-send').click();
+}).change(e =>
+{
+    const $this = $(e.target);
+    const text = $this.text().trim();
+
+    if (text.length > 0)
+        $('#chat-send').removeClass('hidden');
+    else
+        $('#chat-send').addClass('hidden');
+});
+
+$('#chat-send').click(() =>
+{
+    const message = $('#chat-input .input').text();
+
+    server_send_query(TYPE_SEND_CHAT, { Content: message }, (_, d) =>
+    {
+        if (d.Success)
+            $('#chat-input .input').html('');
+    });
+});
+
+
 
 
 const share_handler = (selector, callback) => $(`#share-container .share[data-service="${selector}"]`).click(() =>
