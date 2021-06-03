@@ -797,9 +797,10 @@ namespace SKHEIJO
                     else
                         return new CommunicationData_SuccessError(false, "Invalid game move.");
                 case CommunicationData_SendChatMessage(string content):
-                    ProcessChatMessage(player.UUID, content);
-
-                    return CommunicationData_SuccessError.OK;
+                    if (ProcessChatMessage(player.UUID, content))
+                        return CommunicationData_SuccessError.OK;
+                    else
+                        return new CommunicationData_SuccessError(false, "The message cannot be empty.");
                 case CommunicationData_AdminCommand admin_request:
                     if (this[player] is not { IsAdmin: true })
                         return new CommunicationData_SuccessError(false, "Unable to execute command: You must be an administrator.");
@@ -909,7 +910,7 @@ namespace SKHEIJO
             }
         }
 
-        public void ProcessChatMessage(Guid UUID, string content)
+        public bool ProcessChatMessage(Guid UUID, string content)
         {
             content = content.Trim().SplitIntoLines().Select(s => s.Trim()).StringJoin("\n");
 
@@ -974,12 +975,19 @@ namespace SKHEIJO
                 }
             }
 
-            _chat.Enqueue(new(UUID, DateTime.Now, sanitized.ToString()));
+            content = sanitized.ToString().Trim();
+
+            if (string.IsNullOrEmpty(content))
+                return false;
+
+            _chat.Enqueue(new(UUID, DateTime.Now, content));
             NotifyAll(new CommunicationData_ChatMessages(_chat.ToArray()));
 
             foreach (Guid uuid in mentioned)
                 if (uuid != UUID && this[UUID]?.Player is Player p)
                     Notify(p, new CommunicationData_ChatMessageMention(UUID));
+
+            return true;
         }
 
         #endregion
