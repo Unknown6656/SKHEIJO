@@ -261,9 +261,10 @@ namespace SKHEIJO
         {
             "Restarting game ...".Log(LogSource.Game);
 
-            total_cards = Math.Max(Math.Max(total_cards, 150), Players.Count * 15 + 30);
+            Players.Shuffle();
 
-            Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card(i % 15 - 2))).ToArray();
+            total_cards = Math.Max(Math.Max(total_cards, 150), (Players.Count * 15) + 30);
+            Card[] cards = Enumerable.Range(0, total_cards).PartitionByArraySize(15).SelectMany(arr => arr.Select(i => new Card((i % 15) - 2))).ToArray();
 
             cards.Shuffle();
 
@@ -418,8 +419,6 @@ namespace SKHEIJO
                 FinalRoundInitiator = CurrentPlayer.Player;
                 CurrentGameState = GameState.FinalRound;
 
-                // TODO : ???
-
                 $"{FinalRoundInitiator} entered final round".Log(LogSource.Game);
 
                 return true;
@@ -428,17 +427,43 @@ namespace SKHEIJO
                 return false;
         }
 
-        public (Player Player, int Points)[] GetCurrentLeaderBoard() => (from p in Players
-                                                                         let player = p.Player
-                                                                         let points = p.VisiblePoints * (player.Equals(FinalRoundInitiator) ? 2 : 1)
-                                                                         orderby points ascending
-                                                                         select (player, points)).ToArray();
-
         public (Player Player, int Points)[] FinishGame()
         {
             CurrentGameState = GameState.Finished;
 
+            bool updated = false;
+
+            foreach (PlayerState player in Players)
+                for (int column = 0; column < player.Dimensions.columns; ++column)
+                    for (int row = 0; row < player.Dimensions.rows; ++row)
+                        if (player.GameField[row, column] is { card: Card card, visible: false })
+                        {
+                            $"uncovering card {row}-{column} ({card}) for {player}".Log(LogSource.Game);
+
+                            player.GameField[row, column] = (card, true);
+                            OnCardFlipped?.Invoke(this, new(player.Player.UUID, row, column, card));
+
+                            updated = true;
+                        }
+
+            if (updated)
+                OnGameStateChanged?.Invoke(this);
+
             return GetCurrentLeaderBoard();
+        }
+
+        public (Player Player, int Points)[] GetCurrentLeaderBoard()
+        {
+            (Player player, int points)[]? leaderboard = (from p in Players
+                                                          let player = p.Player
+                                                          let points = p.VisiblePoints * (player.Equals(FinalRoundInitiator) ? 2 : 1)
+                                                          orderby points ascending
+                                                          select (player, points)).ToArray();
+
+            if (leaderboard.Length > 0 && leaderboard[^1].player == FinalRoundInitiator)
+                leaderboard[^1].points *= 2;
+
+            return leaderboard;
         }
     }
 
