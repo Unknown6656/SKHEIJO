@@ -1,6 +1,7 @@
 "use strict";
 
 const UUID_REGEX = /\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}/gi;
+const B64_ROTATE = 'E=k1bq7Rgc+jXypOKsft2iQwHv0dSxWTJLDGa56uAIB/zYNrZ3oPm9n4FVMCehlU8';
 const TYPE_PREFIX = 'CommunicationData_';
 const TYPE_SERVER_INFO = 'ServerInformation';
 const TYPE_DISCONNECT = 'Disconnect';
@@ -109,7 +110,6 @@ if (url_conn_string == null)
     url_conn_string = window.localStorage.getItem(STORAGE_CONN_STRING);
 
 
-
 on_page_loaded = () =>
 {
     $('#login-string').val(url_conn_string);
@@ -139,25 +139,31 @@ function random(max)
 
 function generate_random_name()
 {
-    const adjective = ['ultra-', 'really ', 'extremely ', 'semi-', 'sometimes ', 'sporadically ', 'definitely ', 'pseudo-'];
+    const adjective = ['ultra-', 'really', 'extremely', 'mostly', 'semi-', 'sometimes', 'sporadically', 'rarely', 'extra-',
+        'definitely', 'pseudo-', 'predominantly', 'usually', 'essentially', 'largely', 'unsatisfyingly', 'satisfyingly',
+        'peculiarly', 'especially', 'notably', 'principally', 'explicitly', 'implicitly', 'laughably', 'generally', '', '',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+    ];
     const prefix = ['red', 'green', 'blue', 'yellow', 'brown', 'white', 'pink', 'orange', 'turquoise', 'fast', 'large', 'slim',
         'indian', 'european', 'american', 'african', 'asian', 'australian', 'nordic', 'western', 'eastern', 'bright', 'happy',
         'dark', 'crimson', 'pale', 'medium', 'rare', 'angry', 'sliky', 'copper', 'iron', 'gold', 'steel', 'brass', 'wooden',
-        'large', 'big', 'great', 'small', 'tall', 'tiny', 'petite', 'cold', 'chilly', 'bumpy', 'curly', 'dry', 'low', 'dusty',
+        'large', 'big', 'great', 'small', 'tall', 'tiny', 'cold', 'chilly', 'bumpy', 'curly', 'dry', 'low', 'dusty', 'unsafe',
         'flat', 'narrow', 'round', 'square', 'wide', 'straight', 'bendy', 'melodic', 'sweet', 'sour', 'salty', 'fuzzy', 'smooth',
         'young', 'old', 'wet', 'anxious', 'bored', 'annoyed', 'fierce', 'hungry', 'mysterious', 'calm', 'exited', 'kind', 'baby',
-        'british', 'german', 'french', 'canadian', 'spanish', 'italian', 'chinese', 'japanese', 'swiss', 'polish', 'english',
+        'british', 'german', 'french', 'canadian', 'spanish', 'italian', 'chinese', 'japanese', 'swiss', 'hungarian', 'english',
         'korean', 'amber', 'beige', 'azure', 'bronze', 'teal', 'tanned', 'default', 'standard', 'somber', 'ballistic', 'crawling',
-        'flying', 'crouching', 'grumpy', 'optimisitc', 'pessimistic', 'monochrome'
+        'flying', 'crouching', 'grumpy', 'optimistic', 'pessimistic', 'monochrome', 'noble', 'polished', 'sneaking', 'evil', 'funny',
+        'exotic', 'sad', 'confused', 'sleepy', 'running', 'walking'
     ];
     const suffix = ['fox', 'dog', 'cat', 'car', 'mouse', 'tiger', 'lion', 'eagle', 'pie', 'raptor', 'snake', 'turtle', 'salmon',
         'coral', 'smoke', 'tomato', 'pepper', 'salt', 'sugar', 'cake', 'tea', 'coffee', 'cucumber', 'apple', 'banana', 'peach',
         'orchid', 'tree', 'flower', 'stone', 'sea', 'forest', 'night', 'puma', 'falcon', 'horse', 'squirrel', 'yoda', 'olive',
         'rose', 'basilisc', 'dragon', 'bear', 'camel', 'bag', 'bee', 'tractor', 'coyote', 'crow', 'cricket', 'crocodile', 'gecko',
         'kiwi', 'leopard', 'lemur', 'pelican', 'penguin', 'swan', 'cube', 'matter', 'square', 'magpie', 'eggplant', 'coconut',
-        'avocado', 'cranberry', 'pine', 'oak', 'gandalf', 'gollum', 'voldemort', 'lamp', 'light', 'roof', 'mushroom'
+        'avocado', 'cranberry', 'pine', 'oak', 'gandalf', 'gollum', 'voldemort', 'lamp', 'light', 'roof', 'mushroom', 'emperor',
+        'king', 'queen', 'president', 'joker', 'teacher', 'coach', 'driver', 'pilot'
     ];
-    let p = '', s = '';
+    let p = '', s = '', a = adjective[random(adjective.length)];
 
     while (p == s)
     {
@@ -165,20 +171,32 @@ function generate_random_name()
         s = suffix[random(suffix.length)];
     }
 
-    return `${adjective[random(adjective.length)]}${p} ${s}`;
+    if (a.length > 0 && !a.endsWith('-'))
+        a += ' ';
+
+    return `${a}${p} ${s}`;
 }
 
 function decode_connection_string(conn_string)
 {
     try
     {
-        const parts = atob(conn_string).split('$');
+        let rotated = [];
+
+        conn_string = conn_string.replace(' ', '+').replace('-', '/').replace('_', '=');
+
+        for (var i = 0; i < conn_string.length; ++i)
+            rotated.push(B64_ROTATE[(B64_ROTATE.length * 20 + conn_string.length + B64_ROTATE.indexOf(conn_string[i]) - 1 - i) % B64_ROTATE.length]);
+
+        rotated = rotated.join('');
+
+        const parts = atob(rotated).split('$');
 
         if (parts.length > 2)
             return {
                 address: parts[0],
-                ws: parts[2],
-                wss: parts[3],
+                ws: parts[1],
+                wss: parts[2],
             };
     }
     catch (e)
@@ -387,7 +405,7 @@ function process_server_message(type, data)
         }
     }
     else if (type == TYPE_FINAL_ROUND)
-        show_notification(`Final game round!<br/>${user_to_html(data.UUID)}'s score has been doubled.`);
+        show_notification(`Final game round!<br/>${user_to_html(data.UUID)}'s score will be doubled if they loose.`);
     else if (type == TYPE_CHAT_MENTION)
         show_notification(`${user_to_html(data.UUID)} has mentioned you in a chat message.`);
     else if (type == TYPE_CHAT_UPDATE)
@@ -748,10 +766,15 @@ function show_celebration(uuid)
 function user_to_html(uuid)
 {
     const user = user_cache[uuid];
-    let name = '{Unknown Player}';
+    let name = `{Unknown Player ${uuid.slice(0, 8)}}`;
     let admin = false;
 
-    if (user != undefined && user != null)
+    if (uuid == '00000000-0000-0000-0000-000000000000')
+    {
+        name = '[SERVER]';
+        admin = true;
+    }
+    else if (user != undefined && user != null)
     {
         name = user.name;
         admin = user.admin;
@@ -839,7 +862,6 @@ function update_game_field(data)
         const you = player.UUID == user_uuid;
         const is_final = player.UUID == data.FinalRoundInitiator;
         let card_index = 0;
-        let points = 0;
         let card_grid = '';
         let null_cards = 0;
 
@@ -865,8 +887,6 @@ function update_game_field(data)
 
             if (card == null)
                 ++null_cards;
-            else
-                points += card.Value;
 
             ++card_index;
         }
@@ -881,9 +901,6 @@ function update_game_field(data)
 
                 card_grid += '</tr>';
             }
-
-        if (is_final)
-            points *= 2;
 
         const user_html = user_to_html(player.UUID);
         const user_name = $(user_html).text().trim();
@@ -914,7 +931,7 @@ function update_game_field(data)
                 <div class="player-footer">
                     ${user_html}
                     &nbsp;
-                    Points: ${points},
+                    Points: ${player.Points},
                     Rank: ${1 + player.LeaderBoardIndex}
                     <br/>
                     <span class="on-current">
@@ -934,7 +951,7 @@ function update_game_field(data)
                 $('#final-round-warning').html(`
                     <b>NOTE:</b>
                     If your current move initiates the final round (i.e. you are the first to have uncovered all cards),
-                    your current points will be doubled from ${points} to ${points * 2}.
+                    an you loose the game, your point score will be doubled.
                 `);
         }
         else
@@ -1133,14 +1150,19 @@ function show_username_select()
     $('#login-container').addClass('hidden');
     $('#username-container').removeClass('hidden');
     $('#username-error').html('');
-    $('#username-input').val(user_name);
-    $('#username-input').focus();
-    $('#username-input').select();
+    $('#username-input').val(user_name).focus().select();
+    $('#username-container .first-only, #username-container .veteran').show();
 
     if (first_time)
-        $('#login-container').addClass('first-time');
+    {
+        $('#login-container, #username-container').addClass('first-time');
+        $('#username-container .veteran').hide();
+    }
     else
-        $('#login-container').removeClass('first-time');
+    {
+        $('#login-container, #username-container').removeClass('first-time');
+        $('#username-container .first-only').hide();
+    }
 }
 
 const preventDefault = e => e.preventDefault();
@@ -1251,6 +1273,7 @@ function upate_user_info(uuid)
             }
         }
 
+        update_chat_messages();
         update_server_and_player_info();
     });
 }
@@ -1259,7 +1282,6 @@ function change_username_req(name, callback)
 {
     server_send_query(TYPE_NAME_REQUEST, {Name: name}, (_, d) => callback(d));
 }
-
 
 
 $('#login-string').on('input change paste keyup', on_login_input_changed);
@@ -1363,6 +1385,8 @@ $('#username-apply').click(() =>
     });
 });
 
+$('#username-generate').click(() => $('#username-input').val(generate_random_name()).focus().select());
+
 $('#user-name').keypress(e =>
 {
     $('#user-name').html('');
@@ -1399,6 +1423,8 @@ $('.menu-bar .menu-item[data-tab]').click(function()
     const elem = $(this);
     const tab = elem.attr('data-tab');
     const content = $(`.menu-content-holder .menu-content[data-tab="${tab}"]`);
+
+    $('#main-container').attr('data-tab', tab);
 
     elem.addClass('active');
     elem.siblings().removeClass('active');
