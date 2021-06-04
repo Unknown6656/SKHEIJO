@@ -4,9 +4,8 @@
         The server is actually listening on "0.0.0.0" or "[::]".
     */
     "address": "skheijo.dynv6.net",
-    "port_tcp": 42087,
-    "port_ws": 42088,
-    "port_wss": 42089,
+    "port_ws": 42087,
+    "port_wss": 42088,
     /*
         If "local_server" is set to false, the server will ignore the "address"-field and instead
         use the public ip address fetched from https://api64.ipify.org/.
