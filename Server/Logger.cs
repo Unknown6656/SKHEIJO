@@ -25,6 +25,7 @@ namespace SKHEIJO
         WebServer,
         UI,
         Game,
+        Chat,
     }
 
     public static class Logger
