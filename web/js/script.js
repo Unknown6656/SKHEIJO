@@ -1,5 +1,6 @@
 "use strict";
 
+const UUID_REGEX = /\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}/gi;
 const TYPE_PREFIX = 'CommunicationData_';
 const TYPE_SERVER_INFO = 'ServerInformation';
 const TYPE_DISCONNECT = 'Disconnect';
@@ -74,6 +75,7 @@ let incoming_queue = undefined;
 let outgoing_queue = undefined;
 let server_conversations = { };
 let notification_backlog = [ ];
+let chat_messages_backlog = [ ];
 let notification_timeout = undefined;
 let initial_board_size = undefined;
 
@@ -202,6 +204,7 @@ function socket_close()
     incoming_queue = undefined;
     outgoing_queue = undefined;
     initial_board_size = undefined;
+    chat_messages_backlog = [ ];
 
     clearInterval(input_loop);
     clearInterval(output_loop);
@@ -388,7 +391,12 @@ function process_server_message(type, data)
     else if (type == TYPE_CHAT_MENTION)
         show_notification(`${user_to_html(data.UUID)} has mentioned you in a chat message.`);
     else if (type == TYPE_CHAT_UPDATE)
-        update_chat_messages(data.Messages);
+    {
+        for (const message of data.Messages)
+            chat_messages_backlog.push(message);
+
+        update_chat_messages();
+    }
     else
         console.log('unprocessed:', type, data);
 }
@@ -749,34 +757,22 @@ function user_to_html(uuid)
         admin = user.admin;
     }
 
-    return `
-        <span class="player-name"
-              data-uuid="${uuid}"
-              ${admin ? 'data-admin' : ''}
-              ${uuid == user_uuid ? 'data-is-me' : ''}>
-            ${name}
-        </span>
-    `;
+    return `<span class="player-name" contenteditable="false" data-uuid="${uuid}" ${admin ? 'data-admin' : ''} ${uuid == user_uuid ? 'data-is-me' : ''}>${name}</span>`;
 }
 
-function update_chat_messages(messages)
+function update_chat_messages()
 {
     let html = '';
+    let i = 0;
 
-    for (let i = 0; i < messages.length; ++i)
+    for (const message of chat_messages_backlog)
     {
-        const message = messages[i];
-        const content = message.Content.replace(/\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}/gi, m =>
-        {
-            const uuid = m.slice(2, -2);
-
-            return `<span class="message-mention" data-uuid="${uuid}">${user_to_html(uuid)}</span>`;
-        });
+        const content = message.Content.replace(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
         let chained = false;
 
-        if (i < messages.length - 1 && message.UUID == messages[i + 1].UUID)
+        if (i < chat_messages_backlog.length - 1 && message.UUID == chat_messages_backlog[i + 1].UUID)
         {
-            const tdiff_ms = Math.abs(new Date(messages[i + 1].Time) - new Date(message.Time));
+            const tdiff_ms = Math.abs(new Date(chat_messages_backlog[i + 1].Time) - new Date(message.Time));
 
             chained = tdiff_ms / 60000.0 < 20;
         }
@@ -793,16 +789,11 @@ function update_chat_messages(messages)
                 `}
             </div>
         `;
+        ++i;
     }
 
     $('#chat-message-list').html(html);
 }
-
-
-TYPE_SEND_CHAT; // TODO
-
-
-
 
 /* 'pile' has the values 'user-x-x', 'draw', 'discard', or 'current'. */
 function card_to_html(card, pile)
@@ -1465,33 +1456,64 @@ $('#change-init-board-size').click(() => server_send_query(TYPE_BOARD_SIZE, {
 }));
 
 
-function insert_at_selection(element, content)
+
+const chat_input_box = $('#chat-input .input');
+let chat_input_range = undefined;
+
+function get_chat_text_selection()
 {
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
+    chat_input_box.focus();
 
-    element = element[0] || element;
+    const range = window.getSelection().getRangeAt(0);
+    const pre_caret = range.cloneRange();
 
-    if (range.commonAncestorContainer == element || range.commonAncestorContainer.parentNode == element)
+    pre_caret.selectNodeContents(chat_input_box[0]);
+    pre_caret.setEnd(range.startContainer, range.startOffset);
+
+    const start = pre_caret.toString().length;
+
+    pre_caret.setEnd(range.endContainer, range.endOffset);
+
+    const end = pre_caret.toString().length;
+
+    return { start: start, end: end, range: range };
+}
+
+function insert_chat_text_at_selection(content)
+{
+    chat_input_box.focus();
+
+    const range = window.getSelection().getRangeAt(0);
+
+    if (range.commonAncestorContainer == chat_input_box[0] || range.commonAncestorContainer.parentNode == chat_input_box[0])
     {
         const node = document.createTextNode(content);
 
         range.deleteContents();
         range.insertNode(node);
         range.selectNodeContents(node);
-        range.collapse(false);
-        // return {
-        //     pos: range.startOffset,
-        //     len: range.startOffset - range.endOffset
-        // };
+        range.collapse();
+        chat_input_box.trigger('change');
     }
 }
 
-$('#chat-input .input').on('focus', function()
+function restore_selection()
 {
-    const $this = $(this);
+    if (chat_input_range)
+    {
+        const selection = window.getSelection();
 
-    $this.data('before', $this.html());
+        selection.removeAllRanges();
+        selection.addRange(chat_input_range);
+
+        return chat_input_range;
+    }
+}
+
+chat_input_box.on('focus', () =>
+{
+    restore_selection();
+    chat_input_box.data('before', chat_input_box.html());
 }).on('paste', e =>
 {
     let text = undefined;
@@ -1504,27 +1526,59 @@ $('#chat-input .input').on('focus', function()
     if (text != undefined)
     {
         e.preventDefault();
-        insert_at_selection(e.target, text);
+        insert_chat_text_at_selection(text);
     }
-
-    $(e.target).trigger('change');
+    else
+        chat_input_box.trigger('change');
 }).on('blur keyup input', function()
 {
-    const $this = $(this);
-
-    if ($this.data('before') !== $this.html())
+    if (chat_input_box.data('before') !== chat_input_box.html())
     {
-        $this.data('before', $this.html());
-        $this.trigger('change');
+        chat_input_box.data('before', chat_input_box.html());
+        chat_input_box.trigger('change');
     }
-}).keypress(e =>
+}).on('selectionchange blur change', () => chat_input_range = window.getSelection().getRangeAt(0))
+.keypress(e =>
 {
     if (e.keyCode == 13)
-        $('#chat-send').click();
-}).change(e =>
+        if (e.shiftKey)
+            insert_chat_text_at_selection('\n');
+        else
+            $('#chat-send').click();
+}).change(() =>
 {
-    const $this = $(e.target);
-    const text = $this.text().trim();
+    const text = chat_input_box.text().trim();
+
+    if (text.includes('{{'))
+    {
+        const { start, end, range } = get_chat_text_selection();
+        let text_index = 0;
+
+        for (let content of chat_input_box.contents())
+            if (content.nodeType == Node.TEXT_NODE)
+            {
+                content = $(content);
+
+                const existing = content.text();
+                const html = existing.replace(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
+
+                if (html != existing)
+                {
+                    const replacement = content.replaceWith(html);
+
+                    if ((start >= text_index && start < text_index + existing.length) ||
+                        (end >= text_index && end < text_index + existing.length))
+                    {
+                        range.selectNodeContents(replacement[0]);
+                        range.collapse(false);
+                    }
+                }
+
+                text_index += existing.length;
+            }
+            else
+                text_index += $(content).text().length;
+    }
 
     if (text.length > 0)
         $('#chat-send').removeClass('hidden');
@@ -1532,14 +1586,46 @@ $('#chat-input .input').on('focus', function()
         $('#chat-send').addClass('hidden');
 });
 
+$('#chat-mention').click(() =>
+{
+    let html = '';
+
+    for (const uuid in user_cache)
+        html += `<div class="mention" data-uuid="${uuid}">${user_to_html(uuid)}</div>`;
+
+    $('#chat-mention-menu').html(html).removeClass('hidden');
+    $('#chat-mention-menu .mention[data-uuid]').click(e =>
+    {
+        const uuid = $(e.target).attr('data-uuid');
+
+        insert_chat_text_at_selection(`{{${uuid}}}`);
+        $('#chat-mention-menu').addClass('hidden');
+    });
+
+    return false;
+});
+
+window.addEventListener('click', e =>
+{
+    const menu = $('#chat-mention-menu');
+
+    if (!menu[0].contains(e.target))
+        menu.addClass('hidden');
+});
+
 $('#chat-send').click(() =>
 {
-    const message = $('#chat-input .input').text();
+    let message = '';
 
-    server_send_query(TYPE_SEND_CHAT, { Content: message }, (_, d) =>
-    {
+    for (const content of chat_input_box.contents())
+        if (content.nodeType == Node.TEXT_NODE)
+            message += content.nodeValue;
+        else if ($(content).hasClass('player-name'))
+            message += `{{${$(content).attr('data-uuid')}}}`;
+
+    server_send_query(TYPE_SEND_CHAT, { Content: message }, (_, d) => {
         if (d.Success)
-            $('#chat-input .input').html('');
+            chat_input_box.html('');
     });
 });
 
