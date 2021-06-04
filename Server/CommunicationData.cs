@@ -170,17 +170,10 @@ namespace SKHEIJO
     public sealed record CommunicationData_ChatMessageMention(Guid UUID) : CommunicationData;
 
     // server -> client
-    public sealed record CommunicationData_ChatMessages(CommunicationData_ChatMessages.ChatMessage[] Messages)
+    public sealed record CommunicationData_ChatMessages(params CommunicationData_ChatMessages.ChatMessage[] Messages)
         : CommunicationData
     {
         public sealed record ChatMessage(Guid UUID, DateTime Time, string Content);
-
-        /*
-            CHAT MESSAGE CONTENT:
-
-                {{xxxxxxxxxxx}}     ->      UUID
-                
-         */
     }
 }
 
