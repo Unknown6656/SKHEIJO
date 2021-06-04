@@ -1023,7 +1023,7 @@ span.player-name[data-is-me]::after {
     margin-bottom: 10px;
     margin-right: auto;
     margin-left: 0;
-    min-width: 250px;
+    /* min-width: 250px; */
     max-width: 90%;
     display: flex;
 }
@@ -1109,12 +1109,43 @@ span.player-name[data-is-me]::after {
     opacity: 1;
 }
 
+.chat-messages .message .message-content .player-name,
+#chat-input .input .player-name {
+    border-radius: 6px;
+    /* border: 1px solid #2266aa77; */
+    background: #77aaff33;
+    padding: 1.5px;
+    margin: 1px;
+}
+
 #chat-send {
     background-image: url('../img/send-message.svg');
 }
 
+#chat-send.hidden {
+    opacity: .4;
+}
+
 #chat-mention {
     background-image: url('../img/mention-user.svg');
+}
+
+#chat-mention-menu {
+    border: 1px solid var(--color-fg);
+    background: var(--color-bg);
+    flex-direction: column;
+    position: absolute;
+    display: flex;
+    bottom: 100%;
+    margin: 5px;
+    right: 0px;
+    z-index: 1;
+}
+
+#chat-mention-menu .mention {
+    background-color: var(--color-bg);
+    cursor: pointer;
+    padding: 10px;
 }
 
 #chat-send,
@@ -1129,12 +1160,14 @@ span.player-name[data-is-me]::after {
 }
 
 #chat-send:hover,
-#chat-mention:hover {
+#chat-mention:hover,
+#chat-mention-menu .mention:hover {
     background-color: var(--color-bg-hover);
 }
 
 #chat-send:active,
-#chat-mention:active {
+#chat-mention:active,
+#chat-mention-menu .mention:active {
     background-color: var(--color-bg-active);
 }
 
