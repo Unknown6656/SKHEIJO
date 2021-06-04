@@ -86,7 +86,7 @@ namespace SKHEIJO
         Guid FinalRoundInitiator
     ) : CommunicationData
     {
-        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, Card? DrawnCard, int LeaderBoardIndex);
+        public sealed record GameUpdatePlayerData(Guid UUID, int Columns, int Rows, Card?[] Cards, Card? DrawnCard, int LeaderBoardIndex, int Points);
     }
 
     // client -> server
