@@ -19,7 +19,6 @@ namespace Server
         private static readonly DirectoryInfo ASM_DIR = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!;
 
 
-
         public static async Task Main(string[] args)
         {
             Console.Clear();
@@ -29,25 +28,29 @@ namespace Server
             Logger.Start();
 
             FileInfo settings_path = new($"{ASM_DIR.FullName}/server-config.json");
-
             using GameServer server = await GameServer.CreateGameServer(settings_path);
-            IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
-            (string a, ConnectionString c)[] conn_str = dns_entry.AddressList.Select(a => (a.ToString(), server.ConnectionString.With(a))).Concat(
-                                                        dns_entry.Aliases.Select(a => (a, server.ConnectionString.With(a)))).ToArray();
+            void print_codes()
+            {
+                IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
+                (string a, ConnectionString c)[] conn_str = dns_entry.AddressList.Select(a => (a.ToString(), server.ConnectionString.With(a))).Concat(
+                                                            dns_entry.Aliases.Select(a => (a, server.ConnectionString.With(a)))).ToArray();
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => server.SaveServer();
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => server.SaveServer();
 
-            Console.WriteLine($@"
-----------------------------------------------------------------------------------------
+                Console.WriteLine($@"
+------------------------------------------------------------------------------------------------------------------
     IP:                 {server.ConnectionString.Address}
     PORTS:              {server.ConnectionString.Ports}
-    INIVATION LINK:     {server.ConnectionString}
-----------------------------------------------------------------------------------------
+    INIVATION CODE:     {server.ConnectionString}
+------------------------------------------------------------------------------------------------------------------
     ALT. INVITATIONS:
-    {conn_str.Select(t => $"{t.a,40}: {t.c}").StringJoin("\n    ")}
-----------------------------------------------------------------------------------------
+    {conn_str.Select(t => $"{t.a,38}: {t.c}").StringJoin("\n    ")}
+------------------------------------------------------------------------------------------------------------------
 type 'stop' to exit or '?' for help.
 ");
+            };
+
+            print_codes();
 
             server.OnIncomingData += (p, o, r) =>
             {
@@ -66,6 +69,7 @@ type 'stop' to exit or '?' for help.
             Regex R_REMOVE = new(@"^remove\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_WIN = new(@"^win\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_CHAT = new(@"^chat\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_RESIZE = new(@"^resize\s+(?<rows>\d+)\s+(?<cols>\d+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
             do
             {
@@ -83,25 +87,28 @@ type 'stop' to exit or '?' for help.
                     @"
 
 --------------------------------------- HELP ---------------------------------------
-?                              display this help text
-clear                          clear console
-op <player>                    makes <player> admin
-unop <player>                  makes <player> regular player
-kick <player>                  kicks <player> from the server
-notify <message>               sends <message> to every player
-notify@ <player> @ <message>   sends <message> to <player>
-chat <message>                 write <message> to the chat
-reset                          reset/restart game
-add <player>                   adds <player> to the game
-aadd                           adds all (possible) players to the game
-remove <player>                removes <player> from the game
-l                              lists game players
-ll                             lists server players
-deal                           reset game and deal cards
-g                              displays game information
-win <player>                   emulates win notification for <player>
-dbg                            enable/disable debug mode
-stop                           stop server
+?                               display this help text
+clear                           clear console
+codes                           print all invitation codes
+op <player>                     makes <player> admin
+unop <player>                   makes <player> regular player
+kick <player>                   kicks <player> from the server
+notify <message>                sends <message> to every player
+notify@ <player> @ <message>    sends <message> to <player>
+chat <message>                  write <message> to the chat
+reset                           reset/restart game
+add <player>                    adds <player> to the game
+aadd                            adds all (possible) players to the game
+remove <player>                 removes <player> from the game
+l                               lists game players
+ll                              lists server players
+deal                            reset game and deal cards
+finish                          forces to finish the game right now
+resize <rows> <columns>         resizes the player area to the given size
+game                            displays game information
+win <player>                    emulates win notification for <player>
+dbg                             enable/disable debug mode
+stop                            stop server
 ------------------------------------------------------------------------------------
 
 ".Info(LogSource.Server);
@@ -109,6 +116,8 @@ stop                           stop server
                     Console.Clear();
                 else if (cmd.ToLowerInvariant() == "reset")
                     server.ResetNewGame();
+                else if (cmd.ToLowerInvariant() == "codes")
+                    print_codes();
                 else if (cmd.ToLowerInvariant() == "aadd")
                     server.TryAddAllConnectedPlayersToGame();
                 else if (cmd.ToLowerInvariant() == "ll")
@@ -117,8 +126,10 @@ stop                           stop server
                     server.CurrentGame?.Players.Select(p => "\n" + p).StringJoin("\n").Info(LogSource.Server);
                 else if (cmd.ToLowerInvariant() == "deal")
                     server.CurrentGame?.DealCardsAndRestart();
-                else if (cmd.ToLowerInvariant() == "g")
+                else if (cmd.ToLowerInvariant() == "game")
                     server.CurrentGame?.ToString().Info(LogSource.Server);
+                else if (cmd.ToLowerInvariant() == "finish")
+                    server.CurrentGame?.FinishGame();
                 else if (cmd.ToLowerInvariant() == "dbg")
                     Logger.MinimumSeverityLevel[LogSource.Server] =
                     Logger.MinimumSeverityLevel[LogSource.WebServer] =
@@ -161,6 +172,12 @@ stop                           stop server
                                 server.NotifyAll(new CommunicationData_PlayerWin(player.UUID));
                             else
                                 $"Unknown player '{m.Groups["p"]}'.".Err(LogSource.Server);
+                        },
+                        [R_RESIZE] = m =>
+                        {
+                            if (int.TryParse(m.Groups["rows"].Value, out int rows) && rows > 2 &&
+                                int.TryParse(m.Groups["cols"].Value, out int columns) && columns > 2)
+                                server.ProcessIncomingMessages(Player.SERVER, new CommunicationData_AdminInitialBoardSize(columns, rows), false).GetAwaiter().GetResult();
                         },
                         [R_CHAT] = m => server.ProcessChatMessage(Guid.Empty, m.Groups["m"].Value),
                         [R_SAY] = m => server.NotifyAll(new CommunicationData_Notification(m.Groups["m"].Value)),
