@@ -329,7 +329,6 @@ namespace SKHEIJO
 
             if (config.init_board_size is ( > 1, > 1))
                 PlayerState.InitialDimensions = config.init_board_size;
-
         }
 
         public void Start()
@@ -740,7 +739,7 @@ namespace SKHEIJO
                         if (name.Length < 2 && name.Length > 32)
                             return new CommunicationData_SuccessError(false, "Your name is shorter than 2 characters or is longer than 32 characters.");
                         else if (!name.All(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_'))
-                            return new CommunicationData_SuccessError(false, "Your name may only contain alpha-numeric characters and spaces or hyphens.");
+                            return new CommunicationData_SuccessError(false, "Your name may only contain alpha-numeric characters, spaces, hyphens, and underscores.");
                         else if (_players.Values.Any(info => name.Equals(info.Name, StringComparison.InvariantCultureIgnoreCase)))
                             return new CommunicationData_SuccessError(false, $"The name '{name}' has already been taken by somebody else.");
 
@@ -980,11 +979,15 @@ namespace SKHEIJO
             if (string.IsNullOrEmpty(content))
                 return false;
 
-            _chat.Enqueue(new(UUID, DateTime.Now, content));
-            NotifyAll(new CommunicationData_ChatMessages(_chat.ToArray()));
+            CommunicationData_ChatMessages.ChatMessage message = new(UUID, DateTime.Now, content);
+
+            message.Log(LogSource.Chat);
+
+            _chat.Enqueue(message);
+            NotifyAll(new CommunicationData_ChatMessages(message));
 
             foreach (Guid uuid in mentioned)
-                if (uuid != UUID && this[UUID]?.Player is Player p)
+                if (uuid != UUID && this[uuid]?.Player is Player p)
                     Notify(p, new CommunicationData_ChatMessageMention(UUID));
 
             return true;
