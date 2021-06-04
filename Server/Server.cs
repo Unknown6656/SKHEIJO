@@ -25,50 +25,38 @@ namespace SKHEIJO
 {
     public record Player(Guid UUID)
     {
-        public Union<TcpClient, WebSocketConnection>? Client { get; init; }
+        public static Player SERVER { get; } = new(Guid.Empty);
+
+        public WebSocketConnection? Client { get; init; }
 
 
-        public override string ToString()
-        {
-            string? remote = null;
-
-            try
-            {
-                remote = Client?.Match(
-                    tcp => $"(tcp) {tcp.Client?.RemoteEndPoint}",
-                    web => $"(web) {web.ConnectionInfo.ClientIpAddress}:{web.ConnectionInfo.ClientPort}"
-                );
-            }
-            catch
-            {
-            }
-
-            return $"{UUID} {remote ?? "not connected"}";
-        }
+        public override string ToString() => $"{UUID} {(Client?.ConnectionInfo is { } conn ? $"{conn.ClientIpAddress}:{conn.ClientPort}" : "not connected")}";
     }
 
     public sealed class ConnectionString
     {
-        public (ushort CSharp, ushort WS, ushort WSS) Ports { get; }
+        private const string _ROTATE = "E=k1bq7Rgc+jXypOKsft2iQwHv0dSxWTJLDGa56uAIB/zYNrZ3oPm9n4FVMCehlU8";
+
+        public (ushort WS, ushort WSS) Ports { get; }
         public string Address { get; }
         public bool IsIPv6 { get; }
 
 
-        public ConnectionString(IPAddress address, ushort port_csharp, ushort port_ws, ushort port_wss)
-            : this(address.ToString(), port_csharp, port_ws, port_wss, address.AddressFamily is AddressFamily.InterNetworkV6)
+        public ConnectionString(IPAddress address, ushort port_ws, ushort port_wss)
+            : this(address.ToString(), port_ws, port_wss, address.AddressFamily is AddressFamily.InterNetworkV6)
         {
         }
 
-        public ConnectionString(string address, ushort port_csharp, ushort port_ws, ushort port_wss, bool is_v6 = false)
+        public ConnectionString(string address, ushort port_ws, ushort port_wss, bool is_v6 = false)
         {
             Address = address;
-            Ports = (port_csharp, port_ws, port_wss);
+            Ports = (port_ws, port_wss);
             IsIPv6 = is_v6;
         }
 
-        public ConnectionString With(IPAddress address) => new(address, Ports.CSharp, Ports.WS, Ports.WSS);
+        public ConnectionString With(IPAddress address) => new(address, Ports.WS, Ports.WSS);
 
-        public ConnectionString With(string address) => new(address, Ports.CSharp, Ports.WS, Ports.WSS);
+        public ConnectionString With(string address) => new(address, Ports.WS, Ports.WSS);
 
         public override int GetHashCode() => ToString().GetHashCode();
 
@@ -81,7 +69,17 @@ namespace SKHEIJO
             if (IPAddress.TryParse(addr, out IPAddress? ip) && ip?.AddressFamily is AddressFamily.InterNetworkV6)
                 addr = $"[{addr}]";
 
-            return From.String($"{addr}${Ports.CSharp}${Ports.WS}${Ports.WSS}${(IsIPv6 ? 1 : 0)}").ToBase64();
+            char[] chars = From.String($"{addr}${Ports.WS}${Ports.WSS}${(IsIPv6 ? 1 : 0)}").ToBase64().ToCharArray();
+
+            for (int i = 0; i < chars.Length; ++i)
+                chars[i] = _ROTATE[(_ROTATE.Length * 20 - chars.Length + _ROTATE.IndexOf(chars[i]) + 1 + i) % _ROTATE.Length] switch
+                {
+                    '/' => '-',
+                    '=' => '_',
+                    char c => c
+                };
+
+            return new(chars);
         }
 
         public static ConnectionString FromString(string connection_string)
@@ -92,18 +90,17 @@ namespace SKHEIJO
                 parts[0],
                 ushort.Parse(parts[1]),
                 ushort.Parse(parts[2]),
-                ushort.Parse(parts[3]),
-                parts[4] == "1"
+                parts[3] == "1"
             );
         }
 
-        public static async Task<ConnectionString> GetMyConnectionString(ushort port_csharp, ushort port_ws, ushort port_wss)
+        public static async Task<ConnectionString> GetMyConnectionString(ushort port_ws, ushort port_wss)
         {
             using HttpClient client = new();
             string html = await client.GetStringAsync("https://api64.ipify.org/");
             IPAddress ip = IPAddress.Parse(html);
 
-            return new(ip, port_csharp, port_ws, port_wss);
+            return new(ip, port_ws, port_wss);
         }
 
         public static implicit operator string(ConnectionString c) => c.ToString();
@@ -235,14 +232,7 @@ namespace SKHEIJO
             if (Connection.Is(out BinaryWriter? writer))
                 writer?.Dispose();
 
-            Player.Client?.Match(
-                tcp =>
-                {
-                    tcp.Close();
-                    tcp.Dispose();
-                },
-                web => web.Close()
-            );
+            Player.Client?.Close();
         }
     }
 
@@ -267,7 +257,6 @@ namespace SKHEIJO
 
         public FileInfo ChatMessagesPath { get; }
         public FileInfo ConfigurationPath { get; }
-        public TcpListener TCPListener { get; }
         public HashSet<string> BannedNames { get; }
         public ConcurrentStack<ServerConfig.HighScore> HighScores { get; }
         public string ServerName { get; }
@@ -304,7 +293,6 @@ namespace SKHEIJO
             if (ChatMessagesPath.Exists)
                 From.File(ChatMessagesPath).ToJSON<CommunicationData_ChatMessages.ChatMessage[]>().Do(_chat.Enqueue);
 
-            TCPListener = new(new IPEndPoint(connection_string.IsIPv6 ? IPAddress.IPv6Any : IPAddress.Any, connection_string.Ports.CSharp));
             WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WS}", true);
             WebSocketServer.ListenerSocket.NoDelay = true;
             WebSocketServer.RestartAfterListenError = true;
@@ -339,25 +327,9 @@ namespace SKHEIJO
             {
                 ResetNewGame();
 
-                TCPListener.Start();
                 WebSocketServer.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
                 WebSocketServerSSL?.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
 
-                Task.Factory.StartNew(async delegate
-                {
-                    while (_running != 0)
-                        if (TCPListener.Pending())
-                            try
-                            {
-                                await OnTCPClientConnected(await TCPListener.AcceptTcpClientAsync()).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                ex.Err(LogSource.Server);
-                            }
-                        else
-                            await Task.Delay(5);
-                });
                 Task.Factory.StartNew(async delegate
                 {
                     int last = _chat.Count;
@@ -394,8 +366,6 @@ namespace SKHEIJO
                     await Task.Delay(50);
 
                 _running = 0;
-
-                TCPListener.Stop();
 
                 foreach (PlayerInfo info in _players.Values)
                     info.Dispose();
@@ -530,67 +500,6 @@ namespace SKHEIJO
         }
 
         #region COMMUNICATION LOGIC
-
-        private async Task OnTCPClientConnected(TcpClient client)
-        {
-            Player? player = null;
-
-            try
-            {
-                $"Incoming connection from {client.Client?.RemoteEndPoint}.".Log(LogSource.Server);
-
-                using (NetworkStream stream = client.GetStream())
-                using (BinaryReader reader = new(stream))
-                using (BinaryWriter writer = new(stream))
-                {
-                    Guid uuid = reader.ReadNative<Guid>();
-
-                    AddPlayer(player = new(uuid) { Client = client }, writer);
-                    writer.Write(ServerName);
-
-                    ArraySegment<byte> keepalive_buffer = new byte[1];
-
-                    while (_running != 0 && client.Client is { } socket)
-                        if (socket.Poll(0, SelectMode.SelectRead) && await socket.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0)
-                        {
-                            $"Connection to {player} lost.".Err(LogSource.Server);
-
-                            break;
-                        }
-                        else
-                        {
-                            bool idle = true;
-
-                            while (stream.DataAvailable)
-                                try
-                                {
-                                    RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(reader);
-
-                                    _incoming.Enqueue((player, packet));
-                                    idle = false;
-
-                                    $"{packet} received from {player}.".Log(LogSource.Server);
-                                }
-                                catch (Exception ex)
-                                {
-                                    ex.Warn(LogSource.Server);
-                                }
-
-                            if (idle)
-                                await Task.Delay(5);
-                        }
-                }
-
-                client.Close();
-            }
-            finally
-            {
-                if (player is { })
-                    RemovePlayer(player);
-
-                client.Dispose();
-            }
-        }
 
         private async void OnWebConnectionOpened(WebSocketConnection socket)
         {
@@ -727,7 +636,7 @@ namespace SKHEIJO
             }
         }
 
-        private async Task<CommunicationData?> ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
+        internal async Task<CommunicationData?> ProcessIncomingMessages(Player player, CommunicationData? message, bool reply_requested)
         {
             switch (message)
             {
@@ -1091,13 +1000,17 @@ namespace SKHEIJO
                 for (int i = 0; i < cards.Length; ++i)
                     cards[i] = p.GameField[i / cols, i % cols] switch { (Card c, true) => c, _ => null };
 
+                int points = cards.Sum(c => c?.Value ?? 0);
                 int index = (from t in leader_board.WithIndex()
                              where t.Item.Player == p.Player
                              select t.Index + 1).FirstOrDefault();
 
                 index = index == 0 ? leader_board.Length - 1 : index - 1;
 
-                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard, index);
+                if (index >= leader_board.Length - 1)
+                    points *= 2;
+
+                return new CommunicationData_GameUpdate.GameUpdatePlayerData(p.Player.UUID, cols, rows, cards, p.CurrentlyDrawnCard, index, points);
             });
 
             foreach (Player player in targets)
@@ -1126,9 +1039,8 @@ namespace SKHEIJO
 
             config ??= new(
                 address: "0.0.0.0",
-                port_tcp: 42087,
-                port_ws: 42088,
-                port_wss: 42089,
+                port_ws: 42087,
+                port_wss: 42088,
                 local_server: false,
                 chat_path: "chat-messages.json",
                 certificate_path: null,
@@ -1140,14 +1052,13 @@ namespace SKHEIJO
                 init_board_size: PlayerState.InitialDimensions
             );
 
-            return new(config_path, config.local_server ? new(config.address, config.port_tcp, config.port_ws, config.port_wss)
-                                                        : await ConnectionString.GetMyConnectionString(config.port_tcp, config.port_ws, config.port_wss), config);
+            return new(config_path, config.local_server ? new(config.address, config.port_ws, config.port_wss)
+                                                        : await ConnectionString.GetMyConnectionString(config.port_ws, config.port_wss), config);
         }
     }
 
     public sealed record ServerConfig(
         string address,
-        ushort port_tcp,
         ushort port_ws,
         ushort port_wss,
         bool local_server,
@@ -1168,158 +1079,6 @@ namespace SKHEIJO
             public static implicit operator (int rows, int cols)(BoardSize size) => (size.rows, size.columns);
 
             public static implicit operator BoardSize((int rows, int cols) size) => new(size.rows, size.cols);
-        }
-    }
-
-    [Obsolete(null, error: true)]
-    public sealed class GameClient
-        : IDisposable
-    {
-        public ConnectionString ConnectionString { get; }
-        public NetworkStream Stream { get; }
-        public BinaryWriter Writer { get; }
-        public BinaryReader Reader { get; }
-        public Player Player { get; }
-        public string ServerName { get; }
-        public bool IsAlive { get; private set; }
-
-        private readonly ConcurrentDictionary<Guid, RawCommunicationPacket?> _open_conversations;
-        private readonly ConcurrentQueue<RawCommunicationPacket> _outgoing;
-        private readonly ConcurrentQueue<RawCommunicationPacket> _incoming;
-
-
-        public event Action<CommunicationData?>? OnIncomingData;
-
-
-        public GameClient(Guid uuid, ConnectionString connection_string)
-        {
-            ConnectionString = connection_string;
-            _open_conversations = new();
-            _outgoing = new();
-            _incoming = new();
-
-            IPEndPoint ep = new(IPAddress.Parse(ConnectionString.Address), ConnectionString.Ports.CSharp);
-            TcpClient client = new();
-            client.Connect(ep);
-
-            Stream = client.GetStream();
-            Player = new(uuid)
-            {
-                Client = client
-            };
-            Writer = new(Stream);
-            Reader = new(Stream);
-            IsAlive = true;
-
-            Writer.WriteNative(uuid);
-            ServerName = Reader.ReadString();
-
-            Task.Factory.StartNew(CommunicationHandler);
-            Task.Factory.StartNew(IncomingHandler);
-
-            $"Connected to '{ServerName}' via {ep}.".Info(LogSource.Client);
-        }
-
-        private async Task CommunicationHandler()
-        {
-            ArraySegment<byte> keepalive_buffer = new byte[1];
-            TcpClient? tcp_client = null;
-
-            if ((Player.Client?.Is(out tcp_client) ?? false) && tcp_client?.Client is Socket client)
-                while (IsAlive)
-                    if (tcp_client?.Client is null || (client.Poll(0, SelectMode.SelectRead) && await client.ReceiveAsync(keepalive_buffer, SocketFlags.Peek) == 0))
-                    {
-                        "Connection to server lost.".Err(LogSource.Client);
-
-                        break;
-                    }
-                    else
-                    {
-                        bool idle = true;
-
-                        while (_outgoing.TryDequeue(out RawCommunicationPacket packet))
-                        {
-                            idle = false;
-                            packet.WriteTo(Writer);
-
-                            if (packet.ConversationIdentifier != Guid.Empty)
-                                _open_conversations[packet.ConversationIdentifier] = null;
-
-                            $"{packet} sent to server.".Log(LogSource.Client);
-                        }
-
-                        while (Stream.DataAvailable)
-                        {
-                            RawCommunicationPacket packet = RawCommunicationPacket.ReadFrom(Reader);
-                            idle = false;
-
-                            $"{packet} received from server.".Log(LogSource.Client);
-
-                            if (packet.ConversationIdentifier != Guid.Empty && _open_conversations.ContainsKey(packet.ConversationIdentifier))
-                                _open_conversations[packet.ConversationIdentifier] = packet;
-                            else
-                                _incoming.Enqueue(packet);
-                        }
-
-                        if (idle)
-                            await Task.Yield();
-                    }
-
-            if (IsAlive)
-                Dispose();
-        }
-
-        public void SendMessage(CommunicationData data) => _outgoing.Enqueue(RawCommunicationPacket.SerializeData(Guid.Empty, data));
-
-        public async Task<CommunicationData?> SendMessageAndWaitForReply(CommunicationData data)
-        {
-            RawCommunicationPacket? reply = null;
-            Guid guid = Guid.NewGuid();
-
-            _outgoing.Enqueue(RawCommunicationPacket.SerializeData(guid, data));
-
-            while (reply is null)
-                while (!_open_conversations.TryGetValue(guid, out reply))
-                    await Task.Delay(1);
-
-            return reply.Value.DeserializeData();
-        }
-
-        private async Task IncomingHandler()
-        {
-            while (IsAlive)
-            {
-                bool idle = true;
-
-                while (_incoming.TryDequeue(out RawCommunicationPacket data))
-                {
-                    idle = false;
-                    OnIncomingData?.Invoke(data.DeserializeData());
-                }
-
-                if (idle)
-                    await Task.Yield();
-            }
-        }
-
-        public void Dispose()
-        {
-            IsAlive = false;
-
-            Reader.Close();
-            Reader.Dispose();
-            Writer.Close();
-            Writer.Dispose();
-            Stream.Close();
-            Stream.Dispose();
-
-            TcpClient? client = null;
-
-            if (Player.Client?.Is(out client) ?? false)
-            {
-                client?.Close();
-                client?.Dispose();
-            }
         }
     }
 }
