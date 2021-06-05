@@ -196,7 +196,7 @@ namespace SKHEIJO
         {
             player_index = Players.Count;
 
-            if (CurrentGameState is GameState.Stopped && Players.None(p => player.Equals(p.Player)) && Players.Count < MAX_PLAYERS)
+            if (CurrentGameState is GameState.Stopped && Players.None(p => player.Equals(p.Player)) && Players.Count < MAX_PLAYERS && !player.IsServer)
             {
                 Players.Add(new(this, player));
                 OnPlayerAdded?.Invoke(this, player);
