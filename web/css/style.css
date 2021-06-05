@@ -794,6 +794,10 @@ span.player-name[data-is-me]::after {
     content: 'You';
 }
 
+#notification-container span.player-name {
+    color: #aaf;
+}
+
 .notification-list-wrapper {
     position: relative;
     overflow-y: auto;
