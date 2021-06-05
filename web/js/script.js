@@ -1395,7 +1395,7 @@ $('#username-apply').click(() =>
             if ((window.location.hash || '').length > 2)
                 $(`.menu-bar .menu-item[data-tab="${window.location.hash.slice(1)}"]`).click();
             else
-                $('.menu-bar .menu-item[data-tab="game"]').click();
+                window.location.hash = '#game';
         }
         else
             $('#username-error').html(response.Message);
@@ -1500,6 +1500,13 @@ $('#change-init-board-size').click(() => server_send_query(TYPE_BOARD_SIZE, {
         show_notification(data.Message, false);
 }));
 
+$(window).on('hashchange', () =>
+{
+    const hash = (window.location.hash || '#').slice(1);
+
+    if (hash.length > 0 && $('#main-cotainer').attr('data-tab') != hash)
+        $(`.menu-bar .menu-item[data-tab="${hash}"]`).click();
+});
 
 
 const chat_input_box = $('#chat-input .input');
