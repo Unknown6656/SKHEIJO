@@ -61,9 +61,9 @@ namespace SKHEIJO
     public sealed record CommunicationData_PlayerQueryInfo(Guid UUID) : CommunicationData;
 
     // server -> client
-    public sealed record CommunicationData_PlayerInfo(bool Exists, string? Name, bool IsAdmin, bool IsInGame) : CommunicationData
+    public sealed record CommunicationData_PlayerInfo(bool Exists, string? Name, bool IsAdmin, bool IsServer, bool IsInGame) : CommunicationData
     {
-        public static CommunicationData_PlayerInfo NotFound { get; } = new(false, null, false, false);
+        public static CommunicationData_PlayerInfo NotFound { get; } = new(false, null, false, false, false);
     }
 
     // server -> client
