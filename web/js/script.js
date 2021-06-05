@@ -230,6 +230,7 @@ function socket_close()
     clearInterval(input_loop);
     clearInterval(output_loop);
 
+    window.location.hash = '';
     window.onbeforeunload = null;
 
     $('#login-form').removeClass('loading');
@@ -1378,7 +1379,6 @@ $('#username-input').keypress(e =>
 $('#username-apply').click(() =>
 {
     $('#username-error').html('');
-    $('.menu-bar .menu-item[data-tab="game"]').click();
 
     change_username_req($('#username-input').val(), response =>
     {
@@ -1391,6 +1391,11 @@ $('#username-apply').click(() =>
             $('#game-container').removeClass('hidden');
             $('#username-container').addClass('hidden');
             $('#user-name').val(user_name);
+
+            if ((window.location.hash || '').length > 2)
+                $(`.menu-bar .menu-item[data-tab="${window.location.hash.slice(1)}"]`).click();
+            else
+                $('.menu-bar .menu-item[data-tab="game"]').click();
         }
         else
             $('#username-error').html(response.Message);
@@ -1442,14 +1447,16 @@ $('.menu-bar .menu-item[data-tab]').click(function()
     elem.siblings().removeClass('active');
     content.siblings().addClass('hidden');
     content.removeClass('hidden');
+    window.location.hash = '#' + tab;
 });
 
 $('#logout-button').click(() => socket.close());
 
 $('#reset-logout-button').click(function()
 {
+    $('#logout-button').click();
+
     window.localStorage.clear();
-    socket.close();
     window.location.reload();
 });
 
