@@ -124,10 +124,13 @@ on_page_loaded = () =>
 
 function on_page_resized()
 {
-    const attr = $('#viewport').attr('content');
     const W800 = ',width=800';
+    var attr = $('#viewport').attr('content').replace(W800, '');
 
-    $('#viewport').attr('content', screen.width < 800 ? attr + W800 : attr.replace(W800, ''));
+    if (window.innerWidth < 800)
+        attr += W800;
+
+    $('#viewport').attr('content', attr);
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -768,11 +771,12 @@ function user_to_html(uuid)
     const user = user_cache[uuid];
     let name = `{Unknown Player ${uuid.slice(0, 8)}}`;
     let admin = false;
+    let server = false;
 
     if (uuid == '00000000-0000-0000-0000-000000000000')
     {
         name = '[SERVER]';
-        admin = true;
+        server = true;
     }
     else if (user != undefined && user != null)
     {
@@ -780,7 +784,7 @@ function user_to_html(uuid)
         admin = user.admin;
     }
 
-    return `<span class="player-name" contenteditable="false" data-uuid="${uuid}" ${admin ? 'data-admin' : ''} ${uuid == user_uuid ? 'data-is-me' : ''}>${name}</span>`;
+    return `<span class="player-name" contenteditable="false" data-uuid="${uuid}" ${admin ? 'data-admin' : server ? 'data-server' : ''} ${uuid == user_uuid ? 'data-is-me' : ''}>${name}</span>`;
 }
 
 function update_chat_messages()
@@ -1176,56 +1180,63 @@ function update_server_and_player_info()
         sorted.push({
             name: user_cache[uuid].name,
             admin: user_cache[uuid].admin,
+            server: user_cache[uuid].server,
             game: user_cache[uuid].game,
             uuid: uuid
         });
 
     sorted.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     sorted.sort((a, b) => a.admin == b.admin ? 0 : a.admin ? -1 : 1);
+    sorted.sort((a, b) => a.server ? -1 : a.server == b.server ? 0 : 1);
 
     const admin_view = $('#main-container').hasClass('admin');
-    let remaining = sorted.length;
 
     for (const user of sorted)
-    {
-        --remaining;
-        html += `
-        <tr ${remaining && !admin_view ? 'class="separator"' : ''}>
-            <td class="level ${user.admin ? 'admin' : ''}"></td>
-            <td>
-                ${user.name}
-                ${user.uuid == user_uuid ? '<span>You</span>' : ''}
-            </td>
-            ${admin_view ? `
-            <td class="admin-only ${user.game ? '' : 'hidden'}">
-                <button class="admin-kick-from-game" data-uuid="${user.uuid}">
-                    Remove from game
-                </button>
-            </td>
-            <td class="admin-only">
-                <button class="admin-kick-from-server" data-uuid="${user.uuid}">
-                    Kick from server
-                </button>
-            </td>
-        </tr>
-        <tr ${remaining && admin_view ? 'class="separator"' : ''}>
-            <td colspan="2">{${user.uuid}}</td>
-            <td class="admin-only">
-                <button class="admin-confetti" data-uuid="${user.uuid}">
-                    <span class="emoji">✨</span>
-                    Confetti
-                    <span class="emoji">✨</span>
-                </button>
-            </td>
-            <td class="admin-only">
-                <button class="admin-make-${user.admin ? 'regular' : 'admin'}" data-uuid="${user.uuid}">
-                    Make ${user.admin ? 'regular' : 'admin'} user
-                </button>
-            </td>
-        ` : ''}
-        </tr>
-        `;
-    }
+        if (user.server)
+            html += `
+                <tr class="separator">
+                    <td class="level server"></td>
+                    <td>[SERVER]</td>
+                    ${admin_view ? '<td></td><td></td>' : ''}
+                </tr>
+            `;
+        else
+            html += `
+                <tr ${!admin_view ? 'class="separator"' : ''}>
+                    <td class="level ${user.admin ? 'admin' : ''}"></td>
+                    <td>
+                        ${user.name}
+                        ${user.uuid == user_uuid ? '<span>You</span>' : ''}
+                    </td>
+                    ${admin_view ? `
+                    <td class="admin-only ${user.game ? '' : 'hidden'}">
+                        <button class="admin-kick-from-game" data-uuid="${user.uuid}">
+                            Remove from game
+                        </button>
+                    </td>
+                    <td class="admin-only">
+                        <button class="admin-kick-from-server" data-uuid="${user.uuid}">
+                            Kick from server
+                        </button>
+                    </td>
+                </tr>
+                <tr class="separator">
+                    <td colspan="2">{${user.uuid}}</td>
+                    <td class="admin-only">
+                        <button class="admin-confetti" data-uuid="${user.uuid}">
+                            <span class="emoji">✨</span>
+                            Confetti
+                            <span class="emoji">✨</span>
+                        </button>
+                    </td>
+                    <td class="admin-only">
+                        <button class="admin-make-${user.admin ? 'regular' : 'admin'}" data-uuid="${user.uuid}">
+                            Make ${user.admin ? 'regular' : 'admin'} user
+                        </button>
+                    </td>
+                ` : ''}
+                </tr>
+            `;
 
     html += '</html>';
 
@@ -1258,6 +1269,7 @@ function upate_user_info(uuid)
             user_cache[uuid] = {
                 name: response.Name,
                 admin: response.IsAdmin,
+                server: response.IsServer,
                 game: response.IsInGame
             };
 

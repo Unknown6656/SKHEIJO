@@ -232,24 +232,33 @@ body.ready #background-container {
 }
 
 #notification-container {
+    border-radius: 10px;
     background-color: forestgreen;
     pointer-events: none;
     color: whitesmoke;
     justify-content: left;
     align-items: center;
     position: fixed;
-    /* display: flex; */
     padding: 10px;
     z-index: 100;
     min-height: 50px;
-    width: 100%;
+    margin: 5px;
     right: 0px;
     left: 0px;
     top: 0px;
 
-    transform: translateY(-100%);
-
+    transform: translateY(-200%);
     transition: all .4s;
+}
+
+#main-container[data-tab="game"] #notification-container {
+    border-radius: 10px;
+    min-width: 300px;
+    margin: 5px;
+    width: 50%;
+    left: var(--menu-size);
+    top: var(--menu-size);
+    right: unset;
 }
 
 #notification-container.error {
@@ -257,7 +266,7 @@ body.ready #background-container {
 }
 
 #notification-container.visible {
-    transform: translateY(0%);
+    transform: translateY(0%) !important;
     pointer-events: all;
 }
 
@@ -513,7 +522,8 @@ body.ready #background-container {
 }
 
 #login-start,
-#username-apply {
+#username-apply,
+#username-generate {
     min-width: 200px;
 }
 
@@ -613,6 +623,7 @@ body.ready #background-container {
     background-size: calc(var(--menu-size) - 10px);
     position: absolute;
     flex-flow: column;
+    overflow: auto;
     display: flex;
     padding: 50px 0px 0px 0px;
     height: 100%;
@@ -754,14 +765,22 @@ span.player-name {
     color: var(--color-control-fg-focused);
 }
 
-span.player-name[data-admin]::before {
-    background-image: url('../img/admin.svg');
+span.player-name[data-admin]::before,
+span.player-name[data-server]::before {
     background-repeat: no-repeat;
     background-size: 100%;
     display: inline-block;
-    content: ' ';
+    content: '';
     height: .8em;
     width: .8em;
+}
+
+span.player-name[data-admin]::before {
+    background-image: url('../img/admin.svg');
+}
+
+span.player-name[data-server]::before {
+    background-image: url('../img/server.svg');
 }
 
 span.player-name[data-is-me]::after {
@@ -769,8 +788,8 @@ span.player-name[data-is-me]::after {
     border: 1px solid var(--color-fg);
     color: var(--color-fg);
     border-radius: 30px;
-    margin-right: 4px;
     padding: 1.5px 3px;
+    margin: 0px 4px;
     font-size: .7em;
     content: 'You';
 }
@@ -846,11 +865,18 @@ span.player-name[data-is-me]::after {
     width: 30px;
 }
 
-#player-list td.level.admin {
-    background-image: url('../img/admin.svg');
+#player-list td.level {
     background-position: center center;
     background-repeat: no-repeat;
     background-size: 20px 20px;
+}
+
+#player-list td.level.admin {
+    background-image: url('../img/admin.svg');
+}
+
+#player-list td.level.server {
+    background-image: url('../img/server.svg');
 }
 
 #player-list td span:not(.emoji) {
@@ -1061,6 +1087,7 @@ span.player-name[data-is-me]::after {
 .chat-footer {
     border-top: 1px solid var(--color-fg);
     background-color: var(--color-bg);
+    padding-bottom: 20px;
     flex-direction: row;
     align-items: center;
     max-height: 250px;
@@ -1069,6 +1096,7 @@ span.player-name[data-is-me]::after {
 
 #chat-input {
     border-right: 1px solid var(--color-fg);
+    border-bottom: 1px solid var(--color-fg);
     background-color: var(--color-control-bg);
     position: relative;
     overflow: auto;
@@ -1078,6 +1106,7 @@ span.player-name[data-is-me]::after {
 
 #chat-input .input,
 #chat-input .placeholder {
+    font-size: 1.3em;
     padding: 5px;
     width: 100%;
     left: 0px;
@@ -1118,6 +1147,14 @@ span.player-name[data-is-me]::after {
     margin: 1px;
 }
 
+#chat-input .input .player-name::before,
+#chat-input .input .player-name::after,
+.chat-messages .message .message-content .player-name::before,
+.chat-messages .message .message-content .player-name::after {
+    content: unset;
+    display: none;
+}
+
 #chat-send {
     background-image: url('../img/send-message.svg');
 }
@@ -1153,10 +1190,10 @@ span.player-name[data-is-me]::after {
     background-color: var(--color-bg);
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 25px;
+    background-size: 30px;
     cursor: pointer;
-    height: 30px;
-    width: 30px;
+    height: 40px;
+    width: 40px;
 }
 
 #chat-send:hover,
@@ -1230,6 +1267,7 @@ span.player-name[data-is-me]::after {
 
 #final-round-warning {
     background-color: var(--color-bg);
+    color: firebrick;
     padding: 15px;
 }
 
