@@ -27,7 +27,9 @@ namespace SKHEIJO
     {
         public static Player SERVER { get; } = new(Guid.Empty);
 
-        public WebSocketConnection? Client { get; init; }
+        public WebSocketConnection? Client { get; set; }
+
+        public bool IsServer => Equals(SERVER);
 
 
         public override string ToString() => $"{UUID} {(Client?.ConnectionInfo is { } conn ? $"{conn.ClientIpAddress}:{conn.ClientPort}" : "not connected")}";
@@ -190,7 +192,7 @@ namespace SKHEIJO
 
         public Player Player { get; }
         public GameServer Server { get; }
-        public Union<BinaryWriter, WebSocketConnection> Connection { get; }
+        public WebSocketConnection? Connection { get; }
 
         public string Name
         {
@@ -204,20 +206,23 @@ namespace SKHEIJO
 
         public bool IsAdmin
         {
-            get => _is_admin;
+            get => IsServer || _is_admin;
             set
             {
-                if (_is_admin != value)
-                {
-                    _is_admin = value;
+                if (!IsServer)
+                    if (_is_admin != value)
+                    {
+                        _is_admin = value;
 
-                    Server.NotifyAll(new CommunicationData_PlayerInfoChanged(Player.UUID));
-                }
+                        Server.NotifyAll(new CommunicationData_PlayerInfoChanged(Player.UUID));
+                    }
             }
         }
 
+        public bool IsServer => Player.IsServer;
 
-        internal PlayerInfo(GameServer server, Player player, Union<BinaryWriter, WebSocketConnection> connection)
+
+        internal PlayerInfo(GameServer server, Player player, WebSocketConnection? connection)
         {
             Server = server;
             Player = player;
@@ -227,13 +232,7 @@ namespace SKHEIJO
 
         public override string ToString() => $"{Name}{(IsAdmin ? " (admin)" : "")}: {Player}";
 
-        public void Dispose()
-        {
-            if (Connection.Is(out BinaryWriter? writer))
-                writer?.Dispose();
-
-            Player.Client?.Close();
-        }
+        public void Dispose() => Player.Client?.Close();
     }
 
     public sealed class GameServer
@@ -325,6 +324,12 @@ namespace SKHEIJO
 
             if (Interlocked.Exchange(ref _running, 1) == 0)
             {
+                _players[Player.SERVER] = new(this, Player.SERVER, null)
+                {
+                    IsAdmin = true,
+                    Name = "[SERVER]",
+                };
+
                 ResetNewGame();
 
                 WebSocketServer.Start(c => OnWebConnectionOpened((WebSocketConnection)c));
@@ -416,7 +421,7 @@ namespace SKHEIJO
             SaveServer();
         }
 
-        private void AddPlayer(Player player, Union<BinaryWriter, WebSocketConnection> connection)
+        private void AddPlayer(Player player, WebSocketConnection connection)
         {
             _players[player] = new(this, player, connection);
 
@@ -582,10 +587,7 @@ namespace SKHEIJO
 
                         if (this[player] is PlayerInfo info)
                         {
-                            info.Connection.Match(
-                                packet.WriteTo,
-                                ws => ws.Send(packet.Message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id))
-                            );
+                            await (info.Connection?.Send(packet.Message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id)) ?? Task.CompletedTask);
 
                             $"(conv:{packet.ConversationIdentifier}) {packet} sent to '{player}'.".Log(LogSource.Server);
                         }
@@ -680,7 +682,7 @@ namespace SKHEIJO
                 case CommunicationData_PlayerQueryInfo request:
                     {
                         if (this[request.UUID] is PlayerInfo info)
-                            return new CommunicationData_PlayerInfo(true, info.Name, info.IsAdmin, CurrentGame?.Players?.Any(p => p.Player.UUID == request.UUID) ?? false);
+                            return new CommunicationData_PlayerInfo(true, info.Name, info.IsAdmin, info.IsServer, CurrentGame?.Players?.Any(p => p.Player.UUID == request.UUID) ?? false);
                         else
                             return CommunicationData_PlayerInfo.NotFound;
                     }
@@ -717,7 +719,7 @@ namespace SKHEIJO
                         {
                             case CommunicationData_AdminKickPlayer(Guid uuid):
                                 {
-                                    if (this[uuid]?.Player is Player p)
+                                    if (this[uuid]?.Player is { IsServer: false } p)
                                     {
                                         await KickPlayer(p);
 
@@ -728,7 +730,7 @@ namespace SKHEIJO
                                 }
                             case CommunicationData_AdminRemovePlayerFromGame(Guid uuid):
                                 {
-                                    if (this[uuid]?.Player is Player p)
+                                    if (this[uuid]?.Player is { IsServer: false } p)
                                     {
                                         RemovePlayerFromCurrentGame(p);
 
@@ -739,7 +741,7 @@ namespace SKHEIJO
                                 }
                             case CommunicationData_AdminMakeAdmin(Guid uuid):
                                 {
-                                    if (this[uuid]?.Player is Player p)
+                                    if (this[uuid]?.Player is { IsServer: false } p)
                                     {
                                         ChangeAdminStatus(p, true);
 
@@ -750,7 +752,7 @@ namespace SKHEIJO
                                 }
                             case CommunicationData_AdminMakeRegular(Guid uuid):
                                 {
-                                    if (this[uuid]?.Player is Player p)
+                                    if (this[uuid]?.Player is { IsServer: false } p)
                                     {
                                         ChangeAdminStatus(p, false);
 
