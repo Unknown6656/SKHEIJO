@@ -43,7 +43,7 @@ namespace SKHEIJO
     }
 
     // server -> client
-    public sealed record CommunicationData_Notification(string Message) : CommunicationData;
+    public sealed record CommunicationData_Notification(string Message, bool Success = true) : CommunicationData;
 
     // server -> client
     public sealed record CommunicationData_PlayerJoined(Guid UUID) : CommunicationData;

@@ -385,7 +385,7 @@ function process_server_message(type, data)
             , false
         );
     else if (type == TYPE_NOTIFICATION)
-        show_notification(data.Message, true);
+        show_notification(data.Message, data.Success);
     else if (type == TYPE_LEADERBOARD)
         update_leaderboard(data.LeaderBoard);
     else if (type == TYPE_HIGH_SCORES)
