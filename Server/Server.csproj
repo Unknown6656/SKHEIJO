@@ -33,7 +33,7 @@
         <PackageReference Include="Unknown6656.Core" Version="1.0.21.1" />
     </ItemGroup>
     <ItemGroup>
-      <None Update="server-config.json">
+      <None Update="config\server.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
       <None Update="skheijo.pfx">
