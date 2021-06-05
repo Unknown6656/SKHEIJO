@@ -65,7 +65,7 @@ browser.string = browser.name + ' ' + browser.version;
 
 {
     var show_warning = false;
-    var min_screen_size = window.getComputedStyle(document.body).getPropertyValue('--min-width');
+    var min_screen_size = parseInt(window.getComputedStyle(document.body).getPropertyValue('--min-width').replace('px', ''));
 
     $('#min-width').html(min_screen_size);
 
@@ -83,14 +83,12 @@ browser.string = browser.name + ' ' + browser.version;
         show_warning = true;
     }
 
-    if (window.matchMedia('(max-device-width: ' + min_screen_size + ')').matches ||
-        window.matchMedia('(max-device-height: ' + min_screen_size + ')').matches)
+    if (min_screen_size > window.innerHeight || min_screen_size > window.innerWidth)
     {
-        var min_height = parseInt(min_screen_size.replace('px', ''));
         var viewport = $("#viewport");
 
-        if (screen.width < min_height)
-            viewport.attr('content', viewport.attr('content') + ', height=' + min_height);
+        if (screen.width < min_screen_size)
+            viewport.attr('content', viewport.attr('content') + ', height=' + min_screen_size);
 
         $('#usage-warning [data-warning="size"]').removeClass('hidden');
 
@@ -98,16 +96,13 @@ browser.string = browser.name + ' ' + browser.version;
     }
 
     if (show_warning)
-    {
-        $('#usage-warning-dismiss').removeClass('hidden');
-        $('#usage-warning-dismiss').click(function()
+        $('#usage-warning-dismiss').removeClass('hidden').click(function()
         {
             $('#usage-container').remove();
             $('#login-container').removeClass('hidden');
 
             load_page();
         });
-    }
     else
     {
         $('#usage-container').remove();
