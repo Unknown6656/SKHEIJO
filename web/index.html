@@ -234,15 +234,26 @@
                     <h1>Welcome<span class="veteran"> back</span>!</h1>
                     <p>
                         In order to join a game, please select a name or alias.
+                        <span class="veteran">
+                            <br/>
+                            This is the name you chose last time:
+                        </span>
                     </p>
                     <p class="first-only">
                         It looks like you are currently connecting to the game for the first time.
                         We have therefore auto-generated a name for you.
                         You may change it below.
+                        <br/>
+                        You may also change the name at anytime in the settings menu.
+                        <br/>
+                        <br/>
                     </p>
                     <input type="text" id="username-input" placeholder="your name or alias" maxlength="32"/>
-                    <p style="text-align: right">
-                        <button id="username-apply">Use the user name</button>
+                    <p>
+                        <div style="float:right">
+                            <button id="username-generate">Generate a new name</button>
+                            <button id="username-apply">Use the user name</button>
+                        </div>
                     </p>
                     <span id="username-error"></span>
                 </div>
@@ -306,17 +317,18 @@
                             The following list enumerates all players connected to the current server.
                             Note that not all players who are connected to the servers are part of the current game.
                             This occures e.g. when a player connects to the server <i>after</i> a game has been started.
-                            Administrators are marked with a badge (<img src="img/admin.svg" style="height: .8em;"/>).
+                            Switch to the leaderboard tab (<img src="img/menu-leaderboard.svg" style="height: .8em;"/>) for an overview of all players in the current game.
+                            <br/>
+                            The following list highlights administrators with a badge (<img src="img/admin.svg" style="height: .8em;"/>).
                         </p>
                         <p>
-                            <span id="player-count">0</span> player(s) connected:
+                            <span id="player-count">0</span> player(s) are currently connected:
                         </p>
                         <div id="player-list"></div>
                         <p class="admin-only">
                             Players can be elevated to administrator by editing the document <code>server-config.json</code> and
                             adding the respective UUIDs to the <code>/admin_uuids</code>-element.
-                            <br/>
-                            The server must not be running for the changes to take effect -- they are overwritten otherwise.
+                            The server must not be running for the changes to take effect - they are overwritten otherwise.
                         </p>
                     </div>
                     <div class="menu-content hidden" data-tab="leaderboard">
@@ -336,8 +348,7 @@
                         <p class="admin-only">
                             To delete the server highscores, please navigate to the document <code>server-config.json</code> and remove
                             the element <code>/high_scores</code>.
-                            <br/>
-                            The server must not be running for the changes to take effect -- they are overwritten otherwise.
+                            The server must not be running for the changes to take effect - they are overwritten otherwise.
                         </p>
                     </div>
                     <div class="menu-content hidden" data-tab="notifications">
@@ -483,22 +494,23 @@
                                 </li>
                                 <li>
                                     If a player's game field only consists of uncovered cards, the final round is initiated.
-                                    Furhtermore, the player's current points will be doubled.
-                                    It is therefore generally not advisable to initiate the final round (except when possessing a point score smaller than zero).
-                                    <br/>
-                                    <img src="img/help/help-12.png" height="200"/>
-                                    <img src="img/help/help-13.png" height="200"/>
-                                    <br/>
                                     All players are notified of the final round via a notification.
                                     <br/>
                                     <img src="img/help/help-14.png"/>
                                 </li>
                                 <li>
-                                    After the final round has been initiated, each player
-                                    [TODO]
-                                </li>
-                                <li>
+                                    After the final round has been played, all covered cards will be uncovered.
+                                    Every player's point score is determined by the sum of all card values.
                                     The player with the lowest point score wins the game.
+                                    <br/>
+                                    <br/>
+                                    <b>
+                                        Please note that a player's final score will be doubled if he or she finishes last.
+                                        It is therefore generally not advisable to initiate the final round.
+                                    </b>
+                                    <br/>
+                                    <img src="img/help/help-12.png" height="200"/>
+                                    <img src="img/help/help-13.png" height="200"/>
                                 </li>
                             </ol>
                         </p>
@@ -563,7 +575,11 @@
                         <div class="chat-container">
                             <div class="chat-header">
                                 <h1>Server-wide chat room</h1>
-                                Please be civil.
+                                <span class="admin-only">
+                                    <b>Note to Administrators:</b>
+                                    You can edit and/or clear the chat by modifying the document
+                                    <code>chat-messages.json</code> <b>after</b> shutting down the server.
+                                </span>
                             </div>
                             <div id="chat-message-list" class="chat-messages"></div>
                             <div class="chat-footer">
