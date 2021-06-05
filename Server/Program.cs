@@ -10,7 +10,6 @@ using System;
 using SKHEIJO;
 
 using Unknown6656.Common;
-using Unknown6656.IO;
 
 namespace Server
 {
@@ -19,7 +18,7 @@ namespace Server
         private static readonly DirectoryInfo ASM_DIR = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!;
 
 
-        public static async Task Main(string[] args)
+        public static async Task Main(string[] _)
         {
             Console.Clear();
             Logger.MinimumSeverityLevelForAll = LogSeverity.Debug;
@@ -175,8 +174,8 @@ stop                            stop server
                         },
                         [R_RESIZE] = m =>
                         {
-                            if (int.TryParse(m.Groups["rows"].Value, out int rows) && rows > 2 &&
-                                int.TryParse(m.Groups["cols"].Value, out int columns) && columns > 2)
+                            if (int.TryParse(m.Groups["rows"].Value, out int rows) && rows > 1 &&
+                                int.TryParse(m.Groups["cols"].Value, out int columns) && columns > 1)
                                 server.ProcessIncomingMessages(Player.SERVER, new CommunicationData_AdminInitialBoardSize(columns, rows), false).GetAwaiter().GetResult();
                         },
                         [R_CHAT] = m => server.ProcessChatMessage(Guid.Empty, m.Groups["m"].Value),
