@@ -16,6 +16,8 @@ namespace Server
     public static class Program
     {
         private static readonly DirectoryInfo ASM_DIR = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!;
+        private static readonly FileInfo SETTINGS_FILE = new($"{ASM_DIR.FullName}/config/server.json");
+
 
 
         public static async Task Main(string[] _)
@@ -26,8 +28,7 @@ namespace Server
             Logger.MinimumSeverityLevel[LogSource.WebServer] = LogSeverity.Info;
             Logger.Start();
 
-            FileInfo settings_path = new($"{ASM_DIR.FullName}/server-config.json");
-            using GameServer server = await GameServer.CreateGameServer(settings_path);
+            using GameServer server = await GameServer.CreateGameServer(SETTINGS_FILE);
             void print_codes()
             {
                 IPHostEntry dns_entry = Dns.GetHostEntry(Dns.GetHostName());
@@ -37,14 +38,14 @@ namespace Server
                 AppDomain.CurrentDomain.ProcessExit += (_, _) => server.SaveServer();
 
                 Console.WriteLine($@"
-------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------
     IP:                 {server.ConnectionString.Address}
     PORTS:              {server.ConnectionString.Ports}
     INIVATION CODE:     {server.ConnectionString}
-------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------
     ALT. INVITATIONS:
     {conn_str.Select(t => $"{t.a,38}: {t.c}").StringJoin("\n    ")}
-------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------
 type 'stop' to exit or '?' for help.
 ");
             };
@@ -63,7 +64,7 @@ type 'stop' to exit or '?' for help.
             Regex R_UNOP = new(@"^unop\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_KICK = new(@"^kick\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_SAY = new(@"^notify\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            Regex R_SAY_PRIVATE = new(@"^notify@\s*(?<p>.+)\s*@\s*(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Regex R_SAY_PRIVATE = new(@"^notify@\s*(?<p>\S+)\s+(?<m>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_ADD = new(@"^add\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_REMOVE = new(@"^remove\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
             Regex R_WIN = new(@"^win\s+(?<p>.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -86,28 +87,32 @@ type 'stop' to exit or '?' for help.
                     @"
 
 --------------------------------------- HELP ---------------------------------------
-?                               display this help text
-clear                           clear console
-codes                           print all invitation codes
-op <player>                     makes <player> admin
-unop <player>                   makes <player> regular player
-kick <player>                   kicks <player> from the server
-notify <message>                sends <message> to every player
-notify@ <player> @ <message>    sends <message> to <player>
-chat <message>                  write <message> to the chat
-reset                           reset/restart game
-add <player>                    adds <player> to the game
-aadd                            adds all (possible) players to the game
-remove <player>                 removes <player> from the game
-l                               lists game players
-ll                              lists server players
-deal                            reset game and deal cards
-finish                          forces to finish the game right now
-resize <rows> <columns>         resizes the player area to the given size
-game                            displays game information
-win <player>                    emulates win notification for <player>
-dbg                             enable/disable debug mode
-stop                            stop server
+?                                   display this help text
+clear                               clear console
+codes                               print all invitation codes
+op <player>                         makes <player> admin
+unop <player>                       makes <player> regular player
+kick <player>                       kicks <player> from the server
+notify <message>                    sends <message> to every player
+notify@ <player> <message>          sends <message> to <player>
+chat <message>                      write <message> to the chat
+reset                               reset/restart game
+add <player>                        adds <player> to the game
+aadd                                adds all (possible) players to the game
+remove <player>                     removes <player> from the game
+l                                   lists game players
+ll                                  lists server players
+deal                                reset game and deal cards
+setdiscard <card>
+setdraw <card>
+setplayerdraw <player> <card>
+set <player> <row> <colum> <card>
+finish                              forces to finish the game right now
+resize <rows> <columns>             resizes the player area to the given size
+game                                displays game information
+win <player>                        emulates win notification for <player>
+dbg                                 enable/disable debug mode
+stop                                stop server
 ------------------------------------------------------------------------------------
 
 ".Info(LogSource.Server);
@@ -130,10 +135,8 @@ stop                            stop server
                 else if (cmd.ToLowerInvariant() == "finish")
                     server.CurrentGame?.FinishGame();
                 else if (cmd.ToLowerInvariant() == "dbg")
-                    Logger.MinimumSeverityLevel[LogSource.Server] =
-                    Logger.MinimumSeverityLevel[LogSource.WebServer] =
-                        Logger.MinimumSeverityLevel[LogSource.Server] == LogSeverity.Info ||
-                        Logger.MinimumSeverityLevel[LogSource.WebServer] == LogSeverity.Info ? LogSeverity.Debug : LogSeverity.Info;
+                    Logger.MinimumSeverityLevel[LogSource.Server] = 
+                        Logger.MinimumSeverityLevel[LogSource.Server] == LogSeverity.Info ? LogSeverity.Debug : LogSeverity.Info;
                 else
                     cmd.Match(new Dictionary<Regex, Action<Match>>()
                     {
