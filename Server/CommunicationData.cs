@@ -29,6 +29,8 @@ namespace SKHEIJO
 
     public abstract record CommunicationData_AdminCommand : CommunicationData;
 
+    // server -> client
+    public sealed record CommunicationData_UserToken(string Token) : CommunicationData;
 
     // server -> client
     public sealed record CommunicationData_Disconnect(DisconnectReaseon Reason) : CommunicationData;
