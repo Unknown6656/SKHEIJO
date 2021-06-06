@@ -11,12 +11,18 @@
         use the public ip address fetched from https://api64.ipify.org/.
     */
     "local_server": true,
-    "chat_path": "chat-messages.json",
+    "paths": {
+        "chat": "messages.json",
+        "highscores": "highscores.json",
+        "user_tokens": "user-tokens.json",
+        "administrators": "administrators.json",
+        "banned": "banned.json"
+    },
     /*
-        Use a value of >null< for "certificate_path", if you do not want to use wss:// instead
+        Use a value of >null< for "certificate", if you do not want to use wss:// instead
         of ws://. The certificate path must point to a valid x509 PFX/PKSC12 certificate
     */
-    "certificate_path": "skheijo.pfx",
+    "certificate": "skheijo.pfx",
     "pfx_password": "skheijo",
     "server_name": "SKHEIJO Server",
     "init_board_size": {
@@ -26,66 +32,5 @@
     "banned_names": [
         "admin",
         "server"
-    ],
-    "admin_uuids": [
-        "03171799-fe96-4d4a-ad3f-8ded6b5452f9",
-        "3d482acb-345d-418a-bb94-6e5852f538aa",
-        "daaab20b-9c78-4d25-8bb6-9f36c7755bb3"
-    ],
-    "high_scores": [
-        {
-            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
-            "LastName": "ultra-wide sugar",
-            "Date": "2021-06-01T11:40:40.5779629+02:00",
-            "Points": -8,
-            "Rows": 2,
-            "Columns": 2,
-            "Players": 2
-        },
-        {
-            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
-            "LastName": "ultra-wide sugar",
-            "Date": "2021-05-31T20:55:36.6569713+02:00",
-            "Points": -6,
-            "Rows": 3,
-            "Columns": 5,
-            "Players": 2
-        },
-        {
-            "UUID": "76c28e2e-eef3-43ae-8b39-69d40b289c6a",
-            "LastName": "copper eagle",
-            "Date": "2021-05-31T17:42:29.0624201+02:00",
-            "Points": -4,
-            "Rows": 3,
-            "Columns": 4,
-            "Players": 3
-        },
-        {
-            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
-            "LastName": "ultra-wide sugar",
-            "Date": "2021-05-30T22:42:29.0624201+02:00",
-            "Points": 1,
-            "Rows": 3,
-            "Columns": 4,
-            "Players": 2
-        },
-        {
-            "UUID": "3d482acb-345d-418a-bb94-6e5852f538aa",
-            "LastName": "fierce eagle",
-            "Date": "2021-05-30T22:29:53+02:00",
-            "Points": 2,
-            "Rows": 3,
-            "Columns": 4,
-            "Players": 2
-        },
-        {
-            "UUID": "daaab20b-9c78-4d25-8bb6-9f36c7755bb3",
-            "LastName": "ultra-wide sugar",
-            "Date": "2021-05-16T13:20:04.1691897+02:00",
-            "Points": 3,
-            "Rows": 3,
-            "Columns": 4,
-            "Players": 2
-        }
     ]
 }
