@@ -17,6 +17,7 @@ using System;
 
 using Fleck;
 
+using Unknown6656.Mathematics.Numerics;
 using Unknown6656.Common;
 using Unknown6656.IO;
 using Unknown6656;
@@ -238,27 +239,37 @@ namespace SKHEIJO
     public sealed class GameServer
         : IDisposable
     {
+        private const int UPDATE_TOKEN_INTERVAL_MS = 5_000;
+        private const int SAVE_SERVER_INTERVAL_MS = 7_000;
         private static readonly Regex REGEX_UUID = new(@"^\{\{[0-9A-F]{8}[-]?(?:[0-9A-F]{4}[-]?){3}[0-9A-F]{12}\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly XorShift _random = new();
+        private static readonly object _mutex = new();
 
         internal readonly ConcurrentDictionary<Player, PlayerInfo> _players;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _incoming;
         private readonly ConcurrentQueue<(Player, RawCommunicationPacket)> _outgoing;
         private readonly ConcurrentQueue<CommunicationData_ChatMessages.ChatMessage> _chat;
+        private readonly ConcurrentDictionary<Guid, ServerConfig.UserToken> _user_tokens;
+        private readonly List<ServerConfig.HighScore> _highscores;
+        private readonly HashSet<Guid> _banned_guids;
+        private readonly HashSet<Guid> _admin_guids;
         private ServerConfig _initial_config;
         private volatile int _running;
         private volatile int _stopping;
 
-        public HashSet<Guid>? AdminUUIDs { get; set; }
+        public string ServerName { get; }
+        public HashSet<string> BannedNames { get; }
         public Game? CurrentGame { get; private set; }
         public ConnectionString ConnectionString { get; }
         public WebSocketServer WebSocketServer { get; }
         public WebSocketServer? WebSocketServerSSL { get; }
-
         public FileInfo ChatMessagesPath { get; }
+        public FileInfo HighscoresPath { get; }
+        public FileInfo UserTokensPath { get; }
+        public FileInfo AdministratorsPath { get; }
+        public FileInfo BannedUsersPath { get; }
         public FileInfo ConfigurationPath { get; }
-        public HashSet<string> BannedNames { get; }
-        public ConcurrentStack<ServerConfig.HighScore> HighScores { get; }
-        public string ServerName { get; }
+
         public bool IsRunning => _running != 0;
 
         public PlayerInfo? this[Player player] => _players.TryGetValue(player, out PlayerInfo? info) ? info : null;
@@ -277,42 +288,47 @@ namespace SKHEIJO
 
             _initial_config = config;
             ConfigurationPath = config_path;
-            ChatMessagesPath = new(Path.Combine(config_path.Directory!.FullName, config.chat_path));
+
+            string config_dir = config_path.Directory!.FullName;
+
+            ChatMessagesPath = new(Path.Combine(config_dir, config.paths.chat));
+            HighscoresPath = new(Path.Combine(config_dir, config.paths.highscores));
+            UserTokensPath = new(Path.Combine(config_dir, config.paths.user_tokens));
+            AdministratorsPath = new(Path.Combine(config_dir, config.paths.administrators));
+            BannedUsersPath = new(Path.Combine(config_dir, config.paths.banned));
+
             ServerName = config.server_name;
             ConnectionString = connection_string;
             BannedNames = new(StringComparer.InvariantCultureIgnoreCase);
             CurrentGame = null;
-            HighScores = new();
-            AdminUUIDs = new();
             _players = new();
             _incoming = new();
             _outgoing = new();
-            _chat = new();
+            _highscores = new();
 
-            if (ChatMessagesPath.Exists)
-                From.File(ChatMessagesPath).ToJSON<CommunicationData_ChatMessages.ChatMessage[]>().Do(_chat.Enqueue);
+            if (HighscoresPath.Exists)
+                _highscores.AddRange(From.File(HighscoresPath).ToJSON<List<ServerConfig.HighScore>>().OrderBy(hs => hs.points));
+
+            _chat = ChatMessagesPath.Exists ? From.File(ChatMessagesPath).ToJSON<ConcurrentQueue<CommunicationData_ChatMessages.ChatMessage>>() : new();
+            _user_tokens = UserTokensPath.Exists ? From.File(UserTokensPath).ToJSON<ConcurrentDictionary<Guid, ServerConfig.UserToken>>() : new();
+            _admin_guids = AdministratorsPath.Exists ? From.File(AdministratorsPath).ToJSON<HashSet<Guid>>() : new();
+            _banned_guids = BannedUsersPath.Exists ? From.File(BannedUsersPath).ToJSON<HashSet<Guid>>() : new();
 
             WebSocketServer = new($"ws://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WS}", true);
             WebSocketServer.ListenerSocket.NoDelay = true;
             WebSocketServer.RestartAfterListenError = true;
             WebSocketServer.EnabledSslProtocols = SslProtocols.Ssl3 | SslProtocols.Ssl2 | SslProtocols.Tls12 | SslProtocols.Tls11 | SslProtocols.Tls;
 
-            if (config.certificate_path is string path)
+            if (config.certificate is string)
             {
                 WebSocketServerSSL = new($"wss://{(connection_string.IsIPv6 ? "[::]" : "0.0.0.0")}:{connection_string.Ports.WSS}", true);
                 WebSocketServerSSL.ListenerSocket.NoDelay = WebSocketServer.ListenerSocket.NoDelay;
                 WebSocketServerSSL.RestartAfterListenError = WebSocketServer.RestartAfterListenError;
                 WebSocketServerSSL.EnabledSslProtocols = WebSocketServer.EnabledSslProtocols;
-                WebSocketServerSSL.Certificate = new X509Certificate2(path, config.pfx_password);
+                WebSocketServerSSL.Certificate = new X509Certificate2(config.certificate, config.pfx_password);
             }
 
             AddBannedNames(config.banned_names);
-            AdminUUIDs ??= new();
-
-            config.admin_uuids?.Do(u => AdminUUIDs.Add(u));
-
-            foreach (ServerConfig.HighScore hs in config.high_scores?.OrderByDescending(hs => hs.Points) as IEnumerable<ServerConfig.HighScore> ?? Array.Empty<ServerConfig.HighScore>())
-                HighScores.Push(hs);
 
             if (config.init_board_size is ( > 1, > 1))
                 PlayerState.InitialDimensions = config.init_board_size;
@@ -337,19 +353,14 @@ namespace SKHEIJO
 
                 Task.Factory.StartNew(async delegate
                 {
-                    int last = _chat.Count;
-
                     while (_running != 0)
-                        if (last != _chat.Count)
-                        {
-                            SaveMessages();
+                    {
+                        SaveServer();
 
-                            last = _chat.Count;
-                        }
-                        else
-                            await Task.Delay(1000);
+                        await Task.Delay(SAVE_SERVER_INTERVAL_MS);
+                    }
 
-                    SaveMessages();
+                    SaveServer();
                 });
                 Task.Factory.StartNew(ProcessIncomingMessages);
                 Task.Factory.StartNew(ProcessOutgoingMessages);
@@ -389,22 +400,24 @@ namespace SKHEIJO
 
         public void SaveServer()
         {
-            Directory.SetCurrentDirectory(ConfigurationPath.Directory!.FullName);
-            From.JSON(_initial_config = _initial_config with
+            lock (_mutex)
             {
-                // address = ConnectionString.Address,
-                admin_uuids = AdminUUIDs?.ToArray() ?? _initial_config.admin_uuids,
-                banned_names = BannedNames.ToArray(),
-                high_scores = HighScores.ToArray(),
-                init_board_size = PlayerState.InitialDimensions,
-            }).ToFile(ConfigurationPath);
+                $"Saving server config to '{ConfigurationPath}'...".Log(LogSource.Server);
 
-            SaveMessages();
+                From.JSON(_initial_config = _initial_config with
+                {
+                    // address = ConnectionString.Address,
+                    banned_names = BannedNames.ToArray(),
+                    init_board_size = PlayerState.InitialDimensions,
+                }).ToFile(ConfigurationPath);
 
-            $"Saving server config to '{ConfigurationPath}'.".Log(LogSource.Server);
+                From.JSON(_chat.ToArray()).ToFile(ChatMessagesPath);
+                From.JSON(_user_tokens).ToFile(UserTokensPath);
+                From.JSON(_admin_guids).ToFile(AdministratorsPath);
+                From.JSON(_banned_guids).ToFile(BannedUsersPath);
+                From.JSON(_highscores).ToFile(HighscoresPath);
+            }
         }
-
-        public void SaveMessages() => From.JSON(_chat.ToArray()).ToFile(ChatMessagesPath);
 
         public void Dispose()
         {
@@ -431,12 +444,12 @@ namespace SKHEIJO
             Notify(player, new CommunicationData_ServerInformation(ServerName, _players.Values.ToArray(p => p.Player.UUID)));
             OnPlayerJoined?.Invoke(player);
 
-            ChangeAdminStatus(player, AdminUUIDs?.Contains(player.UUID) ?? false);
+            ChangeAdminStatus(player, _admin_guids?.Contains(player.UUID) ?? false);
 
             if (CurrentGame is Game game)
                 BroadcastCurrentGameState(game, new[] { player });
 
-            Notify(player, new CommunicationData_ServerHighScores(HighScores.ToArray()));
+            Notify(player, new CommunicationData_ServerHighScores(_highscores.ToArray()));
             Notify(player, new CommunicationData_ChatMessages(_chat.ToArray()));
         }
 
@@ -467,12 +480,10 @@ namespace SKHEIJO
             if (this[player] is PlayerInfo info)
                 info.IsAdmin = make_admin;
 
-            AdminUUIDs ??= new();
-
             if (make_admin)
-                AdminUUIDs.Add(player.UUID);
+                _admin_guids.Add(player.UUID);
             else
-                AdminUUIDs.Remove(player.UUID);
+                _admin_guids.Remove(player.UUID);
 
             SaveServer();
         }
@@ -508,34 +519,97 @@ namespace SKHEIJO
 
         private async void OnWebConnectionOpened(WebSocketConnection socket)
         {
-            Guid? guid = null;
+            (Guid UUID, string Token)? auth = null;
 
             socket.OnBinary = bytes =>
             {
-                unsafe
+                try
                 {
-                    if (bytes.Length >= sizeof(Guid))
-                        guid = Guid.ParseExact(From.Bytes(bytes).ToHexString(), "N");
+                    unsafe
+                    {
+                        string[] str = BytewiseEncoding.Instance.GetString(bytes).Split('|');
+
+                        if (str.Length > 1 && Guid.TryParse(str[0], out Guid uuid))
+                        {
+                            auth = (uuid, str[1]);
+                            socket.OnBinary = null;
+                        }
+                    }
+                }
+                catch
+                {
+                    socket.Close();
                 }
             };
 
-            while (_running != 0 && socket.IsAvailable && guid is null)
-                await Task.Delay(20);
+            while (_running != 0 && socket.IsAvailable && auth is null)
+                await Task.Delay(10);
 
-            if (guid.HasValue)
+            if (auth is (Guid guid, string current_token))
             {
-                Player player = new(guid.Value)
+                CommunicationData_SuccessError login_result = CommunicationData_SuccessError.OK;
+                Player player = new(guid)
                 {
                     Client = socket
                 };
-                AddPlayer(player, socket);
 
-                socket.OnClose = () => RemovePlayer(player);
-                socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);
-                socket.OnMessage = message => OnWebsocketMessage(socket, player, message);
+                if (guid == Guid.Empty || _players.Keys.Any(p => p.UUID == guid))
+                    try
+                    {
+                        $"Rejecting login from {player} due to {(guid == Guid.Empty ? "empty" : "duplicate")} UUID.".Err(LogSource.Server);
 
-                while (_running != 0 && socket.IsAvailable)
-                    await Task.Delay(20);
+                        login_result = new(false, guid == Guid.Empty ? "Login as [SERVER] is not permitted from a web interface." : "It seems that you are already logged in in an other tab.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Warn(LogSource.Server);
+                    }
+                else if (!_user_tokens.TryGetValue(guid, out ServerConfig.UserToken? expected))
+                    _user_tokens[guid] = new(new(), DateTime.Now);
+                else if (expected.tokens.Count > 1 && !expected.tokens.Contains(current_token))
+                {
+                    $"Rejecting login from {player} due to invalid token (expected {expected}, got '{current_token}').".Err(LogSource.Server);
+
+                    login_result = new(false, "You do not posess the correct authentication to connect to the server. Please reset your security token or contact the server administrator.");
+                }
+
+                await socket.Send(RawCommunicationPacket.SerializeData(Guid.Empty, login_result).Message.Match(RawCommunicationPacket.Encoding.GetString, LINQ.id));
+
+                if (login_result.Success)
+                {
+                    Stopwatch token_stopwatch = new();
+
+                    AddPlayer(player, socket);
+
+                    socket.OnClose = () => RemovePlayer(player);
+                    socket.OnBinary = bytes => OnWebsocketMessage(socket, player, bytes);
+                    socket.OnMessage = message => OnWebsocketMessage(socket, player, message);
+                    token_stopwatch.Start();
+
+                    Queue<string> tokens = _user_tokens[guid].tokens;
+
+                    while (_running != 0 && socket.IsAvailable)
+                        if (token_stopwatch.ElapsedMilliseconds > UPDATE_TOKEN_INTERVAL_MS)
+                        {
+                            current_token = From.Bytes(_random.NextBytes(32)).ToHexString();
+                            _user_tokens[guid] = _user_tokens[guid] with { date = DateTime.Now, tokens = tokens };
+
+                            tokens.Enqueue(current_token);
+
+                            Notify(player, new CommunicationData_UserToken(current_token));
+
+                            while (tokens.Count > 10)
+                                tokens.Dequeue();
+
+                            token_stopwatch.Restart();
+
+                            $"Updated security token for {player}: {current_token}".Log(LogSource.Server);
+                        }
+                        else
+                            await Task.Delay(20);
+                }
+                else
+                    await Task.Delay(250);
             }
 
             socket.Close();
@@ -954,18 +1028,18 @@ namespace SKHEIJO
                 if (game.CurrentPlayer___FinishesFinalRound())
                 {
                     (Player Player, int Points)[] leaderboard = game.FinishGame();
-                    int highscore_count = HighScores.Count;
+                    int highscore_count = _highscores.Count;
 
                     if (leaderboard.FirstOrDefault().Player is Player winner)
                         NotifyAll(new CommunicationData_PlayerWin(winner.UUID));
 
                     foreach ((Player player, int points) in leaderboard.Reverse())
-                        if (!HighScores.TryPeek(out ServerConfig.HighScore? highest) || highest.Points > points)
-                            HighScores.Push(new(player.UUID, this[player]?.Name, DateTime.Now, points, game.InitialRows, game.InitialColumns, game.Players.Count));
+                        if (_highscores.Count == 0 || (_highscores[0].points > points))
+                            _highscores.Insert(0, new(player.UUID, this[player]?.Name, DateTime.Now, points, game.InitialRows, game.InitialColumns, game.Players.Count));
 
-                    if (HighScores.Count != highscore_count)
+                    if (_highscores.Count != highscore_count)
                     {
-                        NotifyAll(new CommunicationData_ServerHighScores(HighScores.ToArray()));
+                        NotifyAll(new CommunicationData_ServerHighScores(_highscores.ToArray()));
                         SaveServer();
                     }
                 }
@@ -1037,25 +1111,36 @@ namespace SKHEIJO
 
         public static async Task<GameServer> CreateGameServer(FileInfo config_path)
         {
-            ServerConfig? config = From.File(config_path).ToJSON<ServerConfig>();
+            ServerConfig? config = null;
+
+            try
+            {
+                config = From.File(config_path).ToJSON<ServerConfig>();
+            }
+            catch
+            {
+            }
 
             config ??= new(
                 address: "0.0.0.0",
                 port_ws: 42087,
                 port_wss: 42088,
                 local_server: false,
-                chat_path: "chat-messages.json",
-                certificate_path: null,
+                paths: new(
+                    chat: "messages.json",
+                    highscores: "highscores.json", 
+                    user_tokens: "user_tokens.json",
+                    administrators: "administrators.json",
+                    banned: "banned.json"
+                ),
+                certificate: null,
                 pfx_password: "",
                 server_name: "test server",
                 banned_names: new string[] { "admin", "server" },
-                admin_uuids: null,
-                high_scores: null,
                 init_board_size: PlayerState.InitialDimensions
             );
 
-            return new(config_path, config.local_server ? new(config.address, config.port_ws, config.port_wss)
-                                                        : await ConnectionString.GetMyConnectionString(config.port_ws, config.port_wss), config);
+            return new(config_path, config.local_server ? new(config.address, config.port_ws, config.port_wss) : await ConnectionString.GetMyConnectionString(config.port_ws, config.port_wss), config);
         }
     }
 
@@ -1064,17 +1149,22 @@ namespace SKHEIJO
         ushort port_ws,
         ushort port_wss,
         bool local_server,
-        string chat_path,
-        string? certificate_path,
+        ServerConfig.Paths paths,
+        string? certificate,
         string pfx_password,
         string server_name,
         string[] banned_names,
-        Guid[]? admin_uuids,
-        ServerConfig.HighScore[]? high_scores,
         ServerConfig.BoardSize init_board_size
     )
     {
-        public sealed record HighScore(Guid UUID, string? LastName, DateTime Date, int Points, int Rows, int Columns, int Players);
+        public sealed record Paths(string chat, string highscores, string user_tokens, string administrators, string banned);
+
+        public sealed record HighScore(Guid uuid, string? name, DateTime date, int points, int rows, int columns, int players);
+
+        public sealed record UserToken(Queue<string> tokens, DateTime date)
+        {
+            public override string ToString() => $"{{[{tokens.StringJoin(", ")}], {date}}}";
+        }
 
         public sealed record BoardSize(int rows, int columns)
         {
