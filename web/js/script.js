@@ -41,6 +41,7 @@ const TYPE_FINAL_ROUND = 'FinalRound';
 const TYPE_SEND_CHAT = 'SendChatMessage';
 const TYPE_CHAT_MENTION = 'ChatMessageMention';
 const TYPE_CHAT_UPDATE = 'ChatMessages';
+const TYPE_USER_TOKEN = 'UserToken';
 const WAITINGFOR_DRAW = 0;
 const WAITINGFOR_PLAY = 1;
 const WAITINGFOR_DISCARD = 2;
@@ -59,6 +60,7 @@ const GAMESTATE_FINISHED = 3;
 const STORAGE_CONN_STRING = 'conn-string';
 const STORAGE_USER_NAME = 'user-name';
 const STORAGE_USER_UUID = 'user-uuid';
+const STORAGE_USER_TOKEN = 'user-auth-token';
 const SERVER_TIMEOUT = 20_000; // 20sec timeout
 
 
@@ -82,6 +84,7 @@ let initial_board_size = undefined;
 
 let user_uuid_obj = UUID.Parse(window.localStorage.getItem(STORAGE_USER_UUID));
 let user_name = window.localStorage.getItem(STORAGE_USER_NAME);
+let user_token = window.localStorage.getItem(STORAGE_USER_TOKEN);
 let first_time = false;
 
 
@@ -247,9 +250,20 @@ function socket_open()
 
     update_game_field(null);
 
-    socket.send(new Blob([
-        user_uuid_obj.bytes
-    ]));
+    socket.onmessage = e =>
+    {
+        const login_result = JSON.parse(e.data).Data;
+
+        if (login_result.Success)
+            socket.onmessage = e => incoming_queue.push(JSON.parse(e.data));
+        else
+        {
+            socket.close();
+            show_notification(login_result.Message || 'The server denied your login request. Please verify that you are neither banned from the server nor using malformed authentication data.', false);
+        }
+    };
+    socket.send(new Blob([user_uuid, '|', user_token]));
+
     input_loop = setInterval(() =>
     {
         if (incoming_queue != undefined && socket != undefined && socket.readyState == WebSocket.OPEN)
@@ -276,8 +290,7 @@ function socket_open()
             socket_close();
     }, 5);
 
-    window.onbeforeunload = () => 'Are you sure that you want to leave the game server?\n' +
-                                'You will be logged out from the current game.';
+    window.onbeforeunload = () => 'Are you sure that you want to leave the game server?\nYou will be logged out from the current game.';
 
     show_username_select();
 }
@@ -372,6 +385,11 @@ function process_server_message(type, data)
             show_notification(`${user_to_html(data.UUID)} has left the game.`);
 
         upate_user_info(data.UUID);
+    }
+    else if (type == TYPE_USER_TOKEN)
+    {
+        window.localStorage.setItem(STORAGE_USER_TOKEN, data.Token);
+        user_token = data.Token;
     }
     else if (type == TYPE_PLAYER_INFO_CHANGED)
         upate_user_info(data.UUID);
@@ -546,11 +564,11 @@ function update_server_highscores(highscores)
             <tr>
                 <td ${i < 3 ? `class="rank" data-rank="${i + 1}"` : ''}></td>
                 <td>${i + 1}</td>
-                <td>${highscores[i].Points}</td>
-                <td>${user_cache[highscores[i].UUID] == undefined ? highscores[i].LastName : user_to_html(highscores[i].UUID)}</td>
-                <td>${highscores[i].Date.slice(0,19).replace('T', ', ')}</td>
-                <td>${highscores[i].Players}</td>
-                <td>${highscores[i].Rows} x ${highscores[i].Columns}</td>
+                <td>${highscores[i].points}</td>
+                <td>${user_cache[highscores[i].uuid] == undefined ? highscores[i].name : user_to_html(highscores[i].uuid)}</td>
+                <td>${highscores[i].date.slice(0,19).replace('T', ', ')}</td>
+                <td>${highscores[i].players}</td>
+                <td>${highscores[i].rows} x ${highscores[i].columns}</td>
             </tr>
         `;
 
@@ -1350,7 +1368,6 @@ $('#login-start').click(function()
                 socket = new WebSocket(`${secure ? 'wss' : 'ws'}://${target.address}:${secure ? target.wss : target.ws}`);
                 socket.onclose = socket_close;
                 socket.onopen = socket_open;
-                socket.onmessage = e => incoming_queue.push(JSON.parse(e.data));
                 socket.onerror = socket_error;
             }
             catch (e)
