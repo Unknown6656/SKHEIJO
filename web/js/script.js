@@ -128,7 +128,7 @@ on_page_loaded = () =>
 function on_page_resized()
 {
     const W800 = ',width=800';
-    var attr = $('#viewport').attr('content').replace(W800, '');
+    var attr = $('#viewport').attr('content').replaceAll(W800, '');
 
     if (window.innerWidth < 800)
         attr += W800;
@@ -189,7 +189,7 @@ function decode_connection_string(conn_string)
     {
         let rotated = [];
 
-        conn_string = conn_string.replace(' ', '+').replace('-', '/').replace('_', '=');
+        conn_string = conn_string.replaceAll(' ', '+').replaceAll('-', '/').replaceAll('_', '=');
 
         for (var i = 0; i < conn_string.length; ++i)
             rotated.push(B64_ROTATE[(B64_ROTATE.length * 20 + conn_string.length + B64_ROTATE.indexOf(conn_string[i]) - 1 - i) % B64_ROTATE.length]);
@@ -813,7 +813,7 @@ function update_chat_messages()
 
     for (const message of chat_messages_backlog)
     {
-        const content = message.Content.replace(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
+        const content = message.Content.replaceAll(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
         let chained = false;
 
         if (i < chat_messages_backlog.length - 1 && message.UUID == chat_messages_backlog[i + 1].UUID)
@@ -1629,7 +1629,7 @@ chat_input_box.on('focus', () =>
                 content = $(content);
 
                 const existing = content.text();
-                const html = existing.replace(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
+                const html = existing.replaceAll(UUID_REGEX, m => user_to_html(m.slice(2, -2)));
 
                 if (html != existing)
                 {
